@@ -1,0 +1,11 @@
+sphinx==7.1.2
+sphinx-design
+# pydata-sphinx-theme
+sphinx-book-theme
+nbsphinx
+# ipykernel
+# kine==0.0.1
+# numpy
+# scipy
+# astropy
+# photutils

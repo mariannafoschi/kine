@@ -1,0 +1,48 @@
+# Data pre-processing
+# -----------------------------
+
+# Time averaging
+tavg: 60
+
+# Systematic noise
+syserr: 0.01
+
+# Time flagging (keep data between t0 and t1)
+tflag:
+  t0: 10.85
+  t1: 14.05
+  out: flagged
+
+# Minimum number of baselines per data snapshot
+min_bl: 4
+
+# Coordinates and data products
+# -----------------------------
+
+# Field of view (uas)
+fov_uas: 200
+
+# Space resolution (pix)
+npix: 64
+
+# Data products
+data_prod: [visQ, visU]
+
+# Training
+# -----------------------------
+
+# Initialization seed
+seed: 1
+
+# Number of epochs
+niter: 5000
+initniter: 3000
+
+# Degrees of positional encoding ([t, x, y])
+nposenc: [4, 0, 0]
+
+# Network parameters
+depth: 4
+width: 256
+outshift: 10
+scaling_ml: 0.75

@@ -1,0 +1,78 @@
+# Data pre-processing
+# -----------------------------
+
+# Time averaging
+tavg: 60
+
+# Systematic noise
+syserr: 0.01
+
+# Time flagging (keep data between t0 and t1)
+tflag:
+  t0: 10.85
+  t1: 14.05
+  out: flagged
+
+# Minimum number of baselines per data snapshot
+min_bl: 4
+
+# Coordinates and data products
+# -----------------------------
+
+# Field of view (uas)
+fov_uas_0: 160
+fov_uas_1: 160
+fov_uas_2: 200
+
+# Space resolution (pix)
+npix_0: 16
+npix_1: 32
+npix_2: 64
+
+# Data products
+data_prod: [logampI, cphaseI, logcampI]
+
+# Amplitudes gain fitting
+# -----------------------------
+
+gains_prior:
+  AA: [0.97, 1.03]
+  AP: [0.97, 1.03]
+  AZ: [0.90, 1.10]
+  JC: [0.97, 1.03]
+  LM: [0.85, 1.15]
+  SM: [0.97, 1.03]
+  SP: [0.94, 1.06]
+
+# Network initialization
+# -----------------------------
+
+init_params:
+  fwhm: 80
+  blur: 20
+  posx: 0
+  posy: 0
+
+# Training
+# -----------------------------
+
+# Initialization seed
+seed: 1
+
+# Number of epochs
+niter_0: 10000
+niter_1: 10000
+niter_2: 5000
+initniter_0: 3000
+initniter_1: 3000
+initniter_2: 6000
+
+# Degrees of positional encoding ([t, x, y])
+nposenc: [6, 0, 0]
+
+# Network parameters
+s_depth: 4
+d_depth: 6
+width: 256
+outshift: 10
+scaling_i: 1
