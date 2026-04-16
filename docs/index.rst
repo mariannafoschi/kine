@@ -27,8 +27,8 @@ Available Features
 
    getting_started
    parameters
-   folder2/user_guide
-   folder1/api
+   user_guide
+   api
 
 .. image:: ../gif/kine_EHT.gif
    :align: center
