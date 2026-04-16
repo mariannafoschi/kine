@@ -4,7 +4,7 @@
 
 `kine` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the time-dependent brightness distribution of the observed source through a fully unsupervised _Neural Field_, or coordinate-based neural network.
 
-![kine video reconstruction from EHT-like data](gif/kine_EHT.gif)
+![kine video reconstruction from EHT-like data](graphix/kine_EHT.gif)
 
 ### Features
 
