@@ -1,7 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 
 project = 'kine'
-copyright = '2026, Antonio Fuentes'
+copyright = '2026, Marianna Foschi, Antonio Fuentes, Brandon Zhao'
 # author = 'Antonio Fuentes et al.'
 
 release =  "0.0.1"
@@ -36,7 +36,7 @@ html_title = "kine"
 # html_logo = "path/to/myimage.png"
 html_theme_options = {
     # "github_url": "https://github.com/aefezeta/kine",
-    "repository_url": "https://github.com/aefezeta/kine",
+    "repository_url": "https://github.com/mariannafoschi/kine",
     "use_repository_button": True,
 #    "use_source_button": True,
 }
