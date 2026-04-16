@@ -23,17 +23,11 @@ Available Features
 
 .. toctree::
    :maxdepth: 2
-   :caption: Getting Started
+   :caption: Content
 
    getting_started
    parameters
    folder2/user_guide
-   
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API
-
    folder1/api
 
 .. image:: ../gif/kine_EHT.gif
