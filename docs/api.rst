@@ -34,6 +34,7 @@ model --- Neural Fields and Learnable Parameters
 **Activation and encoding helpers**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.model.sharpgelu
@@ -42,6 +43,7 @@ model --- Neural Fields and Learnable Parameters
 **Neural fields**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.model.NeuralField
@@ -50,6 +52,7 @@ model --- Neural Fields and Learnable Parameters
 **Telescope gain modules**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.model.AmplitudeGains
@@ -94,6 +97,7 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Loading and merging observations**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.load_uvfits
@@ -102,6 +106,7 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Cleaning and flagging**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.flag_empty
@@ -115,6 +120,7 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Normalization and multi-epoch alignment**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.get_zbl
@@ -124,6 +130,7 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Time splitting and light curves**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.split_obs
@@ -132,6 +139,7 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Data product packing**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.get_data
@@ -164,6 +172,7 @@ advance it by one optimization step.
 **Module-level globals**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.trainer.NPIX
@@ -171,6 +180,7 @@ advance it by one optimization step.
 **Training state**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.trainer.Trainer
@@ -199,6 +209,7 @@ provides plotting and export routines.
 **Construction from training output**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video
@@ -210,6 +221,7 @@ provides plotting and export routines.
 **Adding ancillary components**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.add_tophat
@@ -220,6 +232,7 @@ provides plotting and export routines.
 **Plotting**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.plot
@@ -229,6 +242,7 @@ provides plotting and export routines.
 **Saving and exporting**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.save_gains
@@ -249,6 +263,7 @@ utils --- Utilities
 **Hyperparameters and learning-rate schedules**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.utils.HyperParams
@@ -257,6 +272,7 @@ utils --- Utilities
 **Coordinate grids and time handling**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.utils.get_grid
@@ -266,6 +282,7 @@ utils --- Utilities
 **Array helpers**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.utils.list_to_jaxarr
@@ -278,6 +295,7 @@ utils --- Utilities
 **I/O and concurrency**
 
 .. autosummary::
+   :toctree: generated
    :nosignatures:
 
    ~kine.utils.no_print
