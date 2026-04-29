@@ -24,6 +24,12 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 - **GPU-based NUFFT**: Non-Uniform Fast Fourier Transform for direct visibility computation.
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
 
+
+
+![kine video reconstruction from EHT-like data](docs/images/kine_EHT.gif)
+
+
+
 ## Installation
 
 `kine` relies on the `JAX` library for GPU computations and requires a careful installation of CUDA-related packages and others. For reference, a working conda environment can be found in [environment.yml](https://github.com/aefezeta/kine/tree/main/environment.yml). Detailed instructions on the installation will be provided in the near future.
@@ -41,24 +47,17 @@ A full description of the imaging algorithm and extensive reconstruction validat
 1. Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
 2. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
 
+## Developers
 
+`kine` is developed and maintained by:
 
-![kine video reconstruction from EHT-like data](docs/images/kine_EHT.gif)
-
-
+ - Antonio Fuentes (antoniofuentesfdez @ gmail . com)
+ - Marianna Foschi (foschimarianna @ gmail . com)
+ - Brandon Zhao (byzhao @ caltech . edu)
 
  ## Citation
 
  If you use `kine` in your publication, please cite:
 
 1. Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
-
-1. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
-
-
-## Developers
-
-`kine` is developed and maintained by:
- - Antonio Fuentes (antoniofuentesfdez @ gmail . com)
- - Marianna Foschi (foschimarianna @ gmail . com)
- - Brandon Zhao (byzhao @ caltech . edu)
+2. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
