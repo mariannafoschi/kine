@@ -1,9 +1,10 @@
 # Byte-compiled / optimized / DLL files
-#__pycache__/
+__pycache__/
 
 # Sphinx documentation
-#docs/build/
+docs/build/
 
 # macOS
-
+.DS_Store
+*/.DS_Store
 
