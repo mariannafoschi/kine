@@ -21,6 +21,12 @@ Available Features
 - **GPU-based NUFFT**: optional Non-Uniform Fast Fourier Transform for direct visibility computation.
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
 
+
+.. image:: _image/kine_EHT.gif
+   :align: center
+   :alt: kine video reconstruction from EHT-like data
+
+
 .. toctree::
    :maxdepth: 2
    :caption: Content
@@ -30,6 +36,4 @@ Available Features
    user_guide
    api
 
-.. image:: _image/kine_EHT.gif
-   :align: center
-   :alt: kine video reconstruction from EHT-like data
+
