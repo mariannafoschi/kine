@@ -6,7 +6,7 @@
 
 Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthedocs.io/), ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It extends the [`eht-imaging`](https://github.com/achael/eht-imaging) library for VLBI data handling.
 
-#### Imaging modes
+### Imaging modes
 
 `kine` can be used for the following imaging tasks:
 
@@ -14,7 +14,7 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
 - **Multi-epoch imaging**: reconstruct a video of the source's evolution across multiple observations spanning days to years.
 
-#### Available features
+### Available features
 
 `kine` currently supports:
 
@@ -44,8 +44,8 @@ Full documentation is available at (https://mariannafoschi.github.io/kine/) and 
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:
 
-1. Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
-2. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
+1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
+2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
 
 ## Developers
 
