@@ -30,6 +30,6 @@ Available Features
    user_guide
    api
 
-.. image:: ../gif/kine_EHT.gif
+.. image:: ../graphics/kine_EHT.gif
    :align: center
    :alt: kine video reconstruction from EHT-like data
