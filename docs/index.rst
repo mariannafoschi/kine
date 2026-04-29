@@ -9,16 +9,18 @@ Built on `JAX <https://jax.readthedocs.io/>`_ and `Flax <https://flax.readthedoc
 
 Imaging modes
 -------------
+``kine`` can be used for the following imaging tasks:
 - **Static imaging**: reconstruct an image of the source from a single VLBI observation.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
 - **Multi-epoch imaging**: reconstruct a video of the source's evolution across multiple observations spanning days to years.
 
 Available Features
 ------------------
+``kine`` currently supports:
 - **Full polarimetric** video and image reconstruction (Stokes I, Q, U, V).
 - **Static + dynamic decomposition**: in dynamic mode, separate persistent and time-variable source structure.
 - **Simultaneous gain fitting**: amplitude and phase telescope gains optimized jointly with the image.
-- **GPU-based NUFFT**: optional Non-Uniform Fast Fourier Transform for direct visibility computation.
+- **GPU-based NUFFT**: Non-Uniform Fast Fourier Transform for direct visibility computation.
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
 
 
