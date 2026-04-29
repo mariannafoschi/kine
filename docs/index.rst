@@ -23,13 +23,14 @@ Available Features
 
 
 
+
 .. image:: _images/kine_EHT.gif
    :align: center
    :alt: kine video reconstruction from EHT-like data
 
 
-Available Features
-------------------
+Documentation
+-------------
 .. toctree::
    :maxdepth: 2
 
