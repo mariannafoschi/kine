@@ -1,5 +1,5 @@
-trainer --- Training and Loss Functions
----------------------------------------
+trainer
+=======
 
 The :class:`~kine.trainer.Trainer` class extends Flax's
 ``train_state.TrainState`` with batch-norm statistics and bundles all
