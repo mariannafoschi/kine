@@ -39,6 +39,6 @@ Documentation
    getting_started
    parameters
    user_guide
-   api
+   api/index
 
 
