@@ -43,7 +43,7 @@ templates_path = ['_templates']
 
 # -- Options for HTML output
 
-html_theme = 'furo'
+html_theme = 'alabaster' # 'furo', 'alabaster'
 html_title = 'kine'
 # html_logo = 'path/to/myimage.png'
 html_theme_options = {
