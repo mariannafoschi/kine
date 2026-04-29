@@ -22,14 +22,16 @@ Available Features
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
 
 
+
 .. image:: _images/kine_EHT.gif
    :align: center
    :alt: kine video reconstruction from EHT-like data
 
 
+Available Features
+------------------
 .. toctree::
    :maxdepth: 2
-   :caption: Content
 
    getting_started
    parameters
