@@ -40,7 +40,7 @@ Assuming you have all required dependencies already installed, then install `kin
 
 ## Documentation
 
-Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes quick start example scripts, description of diagnostic plots, and API documentation.
+Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes quick start example scripts, hyperparameter description, user guide, and API documentation.
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:
 
