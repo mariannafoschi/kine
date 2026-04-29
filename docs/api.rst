@@ -31,8 +31,6 @@ below:
 model --- Neural Fields and Learnable Parameters
 -------------------------------------------------
 
-.. automodule:: kine.model
-
 **Activation and encoding helpers**
 
 .. autosummary::
@@ -86,8 +84,6 @@ model --- Neural Fields and Learnable Parameters
 
 obsdata --- Data Handling
 -------------------------
-
-.. automodule:: kine.obsdata
 
 The :class:`~kine.obsdata.Obsdata` class extends `ehtim's Obsdata
 <https://github.com/achael/eht-imaging/blob/main/ehtim/obsdata.py>`_ with
@@ -158,8 +154,6 @@ visibilities and closure quantities into JAX-friendly arrays.
 trainer --- Training and Loss Functions
 ---------------------------------------
 
-.. automodule:: kine.trainer
-
 The :class:`~kine.trainer.Trainer` class extends Flax's
 ``train_state.TrainState`` with batch-norm statistics and bundles all
 loss functions used during training as static methods. End users typically
@@ -195,8 +189,6 @@ advance it by one optimization step.
 
 video --- Video Creation and Visualization
 ------------------------------------------
-
-.. automodule:: kine.video
 
 The :class:`~kine.video.Video` class is the central container for
 reconstructed image cubes. It bundles all Stokes/polarization arrays
@@ -253,8 +245,6 @@ provides plotting and export routines.
 
 utils --- Utilities
 -------------------
-
-.. automodule:: kine.utils
 
 **Hyperparameters and learning-rate schedules**
 
