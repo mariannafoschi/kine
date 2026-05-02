@@ -16,6 +16,7 @@ The ``kine`` package is organized into five modules:
 .. list-table::
    :header-rows: 1
    :widths: 25 75
+   :align: left
 
    * - Module
      - Description
@@ -31,10 +32,11 @@ The ``kine`` package is organized into five modules:
      - Various utilities, including grids, batching, schedules, data formatting.
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
 
-   model
    obsdata
-   trainer
+   model
    video
+   trainer
    utils
