@@ -4,9 +4,14 @@ API Reference
 
 .. currentmodule:: kine
 
-This page provides a complete reference for the public ``kine`` API. The
-package is organized into five modules, each documented in its own section
-below:
+The ``kine`` package is organized into five modules:
+
+- **obsdata** : the class is an expansion of ``eht-imaging``'s Obsdata class for manipulation of VLBI data. It inherits all attributes and methods from ehtim's class, while adding new methods for data processing with ``kine``. An `obsdata` object contains 
+- ``model`` : 
+- ``video`` : 
+- ``trainer`` : 
+- ``utils`` : 
+
 
 .. list-table::
    :header-rows: 1
