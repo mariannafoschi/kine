@@ -43,7 +43,7 @@ templates_path = ['_templates']
 
 # -- Options for HTML output
 
-html_theme = 'furo' # 'furo', 'alabaster'
+html_theme = 'breeze' # 'sphinx_rtd_theme', 'breeze'
 html_title = 'kine'
 # html_logo = 'path/to/myimage.png'
 html_theme_options = {
