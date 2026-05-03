@@ -315,13 +315,13 @@ class PhaseGains(nn.Module):
     ntimes: int = 99
 
     def clipping(self, x: ArrayLike) -> Array:
-        """Clip gains within specified range.
+        """Clip gains to the [-pi,pi] interval.
                 
         Args:
-            x: Input array.
+            x: Input array of phase gains.
 
         Returns:
-            Clipped input array.
+            Clipped array of phase gains.
         """
         x = (x + jnp.pi) % (2 * jnp.pi) - jnp.pi
         return jnp.clip(x, -jnp.pi, jnp.pi)
