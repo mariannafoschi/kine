@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy scipy astropy ehtim jax jaxlib flax matplotlib typing-extensions
           pip install -e .
-          pip install sphinx breeze sphinx-rtd-theme furo sphinx-design nbsphinx ipykernel
+          pip install sphinx sphinx-breeze-theme sphinx-rtd-theme furo sphinx-design nbsphinx ipykernel
 
       - name: Build docs
         run: sphinx-build -b html docs docs/build/html
