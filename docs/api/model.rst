@@ -46,7 +46,6 @@ model
 .. autoclass:: kine.model.PhaseGains
    :members:
    :undoc-members:
-   :show-inheritance:
 
 .. autofunction:: kine.model.posenc
    
