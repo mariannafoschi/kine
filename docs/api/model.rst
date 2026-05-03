@@ -45,6 +45,8 @@ model
 
 .. autoclass:: kine.model.PhaseGains
    :members:
+   :special-members: __call__
+   :exclude-members: clipping
 
 .. autofunction:: kine.model.posenc
    

@@ -327,11 +327,7 @@ class PhaseGains(nn.Module):
         return jnp.clip(x, -jnp.pi, jnp.pi)
 
     @nn.compact
-    def __call__(
-        self,
-        baselines: ArrayLike,
-        frames: ArrayLike
-    ) -> tuple[Array]:
+    def __call__(self, baselines: ArrayLike, frames: ArrayLike) -> tuple[Array]:
         """Compute phase gains
         
         Args:
