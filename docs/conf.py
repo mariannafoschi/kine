@@ -64,6 +64,22 @@ autodoc_type_aliases = {
     'jaxlib.xla_extension.ArrayImpl': 'Array',
 }
 
+import re
+
+_ARRAYLIKE_RE = re.compile(
+    r'Array \| ndarray \| bool \| number \| bool \| int \| float \| complex'
+)
+
+def _shorten_array_types(app, what, name, obj, options, signature, return_annotation):
+    if signature:
+        signature = _ARRAYLIKE_RE.sub('ArrayLike', signature)
+    if return_annotation:
+        return_annotation = _ARRAYLIKE_RE.sub('ArrayLike', return_annotation)
+    return signature, return_annotation
+
+def setup(app):
+    app.connect('autodoc-process-signature', _shorten_array_types)
+
 # -- Source button
 def linkcode_resolve(domain, info):
     if domain != 'py' or not info['module']:
