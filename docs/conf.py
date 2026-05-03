@@ -49,8 +49,11 @@ html_title = 'kine'
 html_theme_options = {
     'repository_url': 'https://github.com/mariannafoschi/kine',
     'use_repository_button': True,
-    'sidebar_position': 'right',
     'use_source_button': True,
+    'header_tabs': False,
+    'sidebar_primary': ['sidebar-nav.html'],
+    'sidebar_secondary': ['sidebar-toc.html'],
+
 }
 
 # -- Options for EPUB output
