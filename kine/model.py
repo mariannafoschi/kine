@@ -35,8 +35,7 @@ def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
 
     .. math::
 
-        \\text{sharpGELU}(x) = \frac{1}{2}\left(1 + \tanh\left(\sqrt{\frac{2}
-        {\pi}}\left(sx + 0.044715\, x^3\right)\right)\right)
+        \\text{sharpGELU}(x) = \frac{1}{2}\left(1 + \tanh\left(\sqrt{\frac{2}{\pi}}\left(sx + 0.044715\, x^3\right)\right)\right)
 
     Args:
         x (ArrayLike): input array.
