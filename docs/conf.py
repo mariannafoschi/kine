@@ -22,9 +22,9 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.linkcode',
-    'sphinx.ext.napoleon',
+#    'sphinx.ext.napoleon',
     'sphinx_design',
-    'nbsphinx'
+    'nbsphinx',
 ]
 
 # source_suffix = ['.rst', '.md']
