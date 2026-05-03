@@ -71,10 +71,11 @@ _ARRAYLIKE_RE = re.compile(
 )
 
 def _shorten_array_types(app, what, name, obj, options, signature, return_annotation):
-    if signature:
-        signature = _ARRAYLIKE_RE.sub('ArrayLike', signature)
-    if return_annotation:
-        return_annotation = _ARRAYLIKE_RE.sub('ArrayLike', return_annotation)
+    if signature and 'Array' in signature:
+        print(f"\n>>> {name}")
+        print(f"    SIG: {repr(signature)}")
+    if return_annotation and 'Array' in return_annotation:
+        print(f"    RET: {repr(return_annotation)}")
     return signature, return_annotation
 
 def setup(app):
