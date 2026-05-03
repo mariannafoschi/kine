@@ -25,9 +25,9 @@ model
    :toctree: generated
    :nosignatures:
 
-   ~kine.model.sharpgelu
    ~kine.model.posenc
-
+   ~kine.model.sharpgelu
+   
 .. autoclass:: kine.model.NeuralField
    :members:
    :undoc-members:
@@ -48,6 +48,7 @@ model
    :undoc-members:
    :show-inheritance:
 
+.. autofunction:: kine.model.posenc
+   
 .. autofunction:: kine.model.sharpgelu
 
-.. autofunction:: kine.model.posenc

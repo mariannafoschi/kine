@@ -71,7 +71,7 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
     return jnp.concatenate(out, axis=-1)
 
 class NeuralField(nn.Module):
-    """Neural Field implementation.
+    """Neural Field network modeling a full polarimetric video.
     
     Predicts full pol. emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
@@ -158,7 +158,7 @@ class NeuralField(nn.Module):
         return x
 
 class NeuralFieldPol(nn.Module):
-    """Linear polarization Neural Field implementation.
+    """Neural Field network modeling a linear polarization video.
     
     Predicts lin. pol. emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
@@ -233,7 +233,7 @@ class NeuralFieldPol(nn.Module):
         return x
 
 class AmplitudeGains(nn.Module):
-    """Train a multi-dimensional parameter as amplitude gains.
+    """Multi-dimensional tunable parameter modeling amplitude gains.
     
     Args:
         lower: Gains values lower limit.
@@ -290,7 +290,7 @@ class AmplitudeGains(nn.Module):
         return gi, gj
 
 class PhaseGains(nn.Module):
-    """Train a multi-dimensional parameter as phase gains.
+    """Multi-dimensional tunable parameter modeling phase gains.
     
     Args:
         nsite: Number of telescopes.
@@ -340,7 +340,7 @@ class PhaseGains(nn.Module):
         return gi, gj
 
 class _ComplexGains(nn.Module):
-    """Train a multi-dimensional parameter as complex gains.
+    """Multi-dimensional tunable parameter modeling complex gains.
 
     Fitting for amplitude + phase gains
     separately seems to work better currently.
@@ -391,7 +391,7 @@ class _ComplexGains(nn.Module):
         return gi * jnp.conj(gj) * vis
 
 class _StaticFluxDensity(nn.Module):
-    """Train a single parameter as the static flux density.
+    """Single tunable parameter modeling the static flux density.
 
     It doesn't seem to work currently, but probably worth keeping it around.
 
