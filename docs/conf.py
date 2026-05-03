@@ -22,6 +22,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.linkcode',
+    'sphinx.ext.napoleon'
     'sphinx_design',
     'nbsphinx'
 ]
@@ -56,6 +57,10 @@ html_theme_options = {
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
 
+# -- Data type specs
+autodoc_type_aliases = {
+    'ArrayLike': 'ArrayLike',
+}
 
 # -- Source button
 def linkcode_resolve(domain, info):

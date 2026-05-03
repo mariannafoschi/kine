@@ -38,7 +38,7 @@ def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
         s: sharpness factor.
     
     Returns:
-        The sharpGELU activation function.
+        sharpGELU(x): output array.
     """
     sqrt_2_over_pi = np.sqrt(2 / np.pi).astype(x.dtype)
     cdf = 0.5 * (1.0 + jnp.tanh(sqrt_2_over_pi * (s*x + 0.044715 * x**3)))
