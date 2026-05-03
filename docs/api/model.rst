@@ -5,6 +5,7 @@ model
 
 .. autosummary::
    :toctree: generated
+   :align: left
    :nosignatures:
 
    ~kine.model.sharpgelu
