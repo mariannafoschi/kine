@@ -27,9 +27,6 @@ extensions = [
     'nbsphinx'
 ]
 
-napoleon_use_param = True
-napoleon_use_rtype = True
-
 # source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
