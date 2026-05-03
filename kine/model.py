@@ -65,7 +65,8 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
     :math:`\\sin([x, x+\\pi/2])`.
 
     Args:
-        x (ArrayLike): Variable to be encoded. Input x should be in [-pi, pi].
+        x (ArrayLike): Variable to be encoded. Input x should be in 
+                       :math:`[-\\pi, \\pi]`.
         deg (tuple[int]): The degree of the encoding.
 
     Returns:
@@ -306,8 +307,8 @@ class PhaseGains(nn.Module):
     """Multi-dimensional tunable parameter modeling phase gains.
     
     Args:
-        nsite: Number of telescopes.
-        ntimes: Number of time segments over which gains are computed.
+        nsite (int): Number of telescopes.
+        ntimes (int): Number of time segments over which gains are computed.
     """
 
     nsites: int = 8
