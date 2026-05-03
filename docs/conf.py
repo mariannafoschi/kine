@@ -58,28 +58,27 @@ html_theme_options = {
 epub_show_urls = 'footnote'
 
 # -- Data type specs
-autodoc_type_aliases = {
-    'ArrayLike': 'ArrayLike',
-    'jax.typing.ArrayLike': 'ArrayLike',
-    'jaxlib.xla_extension.ArrayImpl': 'Array',
-}
-
 import re
-
 _ARRAYLIKE_RE = re.compile(
-    r'Array \| ndarray \| bool \| number \| bool \| int \| float \| complex'
+    r'~jax\.jaxlib\._jax\.Array \| ~numpy\.ndarray \| ~numpy\.bool \| ~numpy\.number \| bool \| int \| float \| complex'
 )
+_ARRAY_RE = re.compile(r'~jax\.jaxlib\._jax\.Array')
 
 def _shorten_array_types(app, what, name, obj, options, signature, return_annotation):
-    if signature and 'Array' in signature:
-        print(f"\n>>> {name}")
-        print(f"    SIG: {repr(signature)}")
-    if return_annotation and 'Array' in return_annotation:
-        print(f"    RET: {repr(return_annotation)}")
+    if signature:
+        signature = _ARRAYLIKE_RE.sub('ArrayLike', signature)
+        signature = _ARRAY_RE.sub('Array', signature)
+    if return_annotation:
+        return_annotation = _ARRAYLIKE_RE.sub('ArrayLike', return_annotation)
+        return_annotation = _ARRAY_RE.sub('Array', return_annotation)
     return signature, return_annotation
 
 def setup(app):
     app.connect('autodoc-process-signature', _shorten_array_types)
+
+
+
+
 
 # -- Source button
 def linkcode_resolve(domain, info):
