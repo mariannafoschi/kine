@@ -1,15 +1,6 @@
 model
 =====
 
-**Activation and encoding helpers**
-
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   ~kine.model.sharpgelu
-   ~kine.model.posenc
-
 **Neural fields**
 
 .. autosummary::
@@ -28,9 +19,14 @@ model
    ~kine.model.AmplitudeGains
    ~kine.model.PhaseGains
 
-.. autofunction:: kine.model.sharpgelu
+**Activation and encoding helpers**
 
-.. autofunction:: kine.model.posenc
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   ~kine.model.sharpgelu
+   ~kine.model.posenc
 
 .. autoclass:: kine.model.NeuralField
    :members:
@@ -51,3 +47,7 @@ model
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. autofunction:: kine.model.sharpgelu
+
+.. autofunction:: kine.model.posenc

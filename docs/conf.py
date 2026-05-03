@@ -21,6 +21,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.linkcode',
     'sphinx_design',
     'nbsphinx'
 ]
@@ -50,11 +51,34 @@ html_theme_options = {
     'repository_url': 'https://github.com/mariannafoschi/kine',
     'use_repository_button': True,
     'use_source_button': True,
-    'header_tabs': False,
-    'sidebar_primary': ['sidebar-nav.html'],
-    'sidebar_secondary': ['sidebar-toc.html'],
-
 }
 
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
+
+
+# -- Source button
+def linkcode_resolve(domain, info):
+    if domain != 'py' or not info['module']:
+        return None
+
+    import importlib, inspect, os
+
+    try:
+        mod = importlib.import_module(info['module'])
+        obj_name = info['fullname'].split('.')[0]
+        obj = getattr(mod, obj_name, None)
+        if obj is None:
+            return None
+        source_file = inspect.getfile(obj)
+        source_lines, start_line = inspect.getsourcelines(obj)
+    except (TypeError, OSError, ImportError):
+        return None
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    rel_path = os.path.relpath(source_file, repo_root)
+
+    return (
+        f"https://github.com/mariannafoschi/kine/blob/main/{rel_path}"
+        f"#L{start_line}-L{start_line + len(source_lines) - 1}"
+    )
