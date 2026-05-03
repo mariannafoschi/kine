@@ -31,14 +31,18 @@ def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
     """Custom GELU activation function.
 
     Computes a `sharper` variant of the (approximate)
-    Gaussian Error Linear Unit (GELU) activation function.
+    Gaussian Error Linear Unit (GELU) activation function:
+
+    .. math::
+
+        \\text{sharpGELU}(x) = \\frac{x}{2} \\left(1 + \\tanh\\left(s \\cdot x\\right)\\right)
 
     Args:
         x: input array.
         s: sharpness factor.
     
     Returns:
-        sharpGELU(x): output array.
+        Output array.
     """
     sqrt_2_over_pi = np.sqrt(2 / np.pi).astype(x.dtype)
     cdf = 0.5 * (1.0 + jnp.tanh(sqrt_2_over_pi * (s*x + 0.044715 * x**3)))
@@ -167,8 +171,8 @@ class NeuralFieldPol(nn.Module):
     Args:
         posenc_deg: Degrees of positional encoding
         outdim: Output layer dimension
-        depth: Number of hidden layers
-        width: Number of neurons in each hidden layer
+        depth (int): Number of hidden layers
+        width (int): Number of neurons in each hidden layer
         activ: Activation function for hidden layers
         outactiv: Output activation function
         outshift: Output activation function shift
