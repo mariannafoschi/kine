@@ -53,12 +53,19 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
     """Positional encoding.
 
     Concatenate `x` with a positional encoding of `x` with degree `deg`.
+
+    .. math::
+
+        x \\rightarrow \\left[x,\\sin(x),\\cos(x),\\sin(2x),\\cos(2x),\\ldots,
+        \\sin(2^\\text{deg}x),\\cos(2^\\text{deg}x)\\right]
+
+
     Instead of computing [sin(x), cos(x)], we use the trig. identity
     cos(x) = sin(x + pi/2) and do one vectorized call to sin([x, x+pi/2]).
 
     Args:
-        x: Variable to be encoded. Note that x should be in [-pi, pi].
-        deg: The degree of the encoding.
+        x (ArrayLike): Variable to be encoded. Note that x should be in [-pi, pi].
+        deg (tuple[int]): The degree of the encoding.
 
     Returns:
         Encoded variables.
