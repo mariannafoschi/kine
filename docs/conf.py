@@ -22,7 +22,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.linkcode',
-#    'sphinx.ext.napoleon',
+    'sphinx.ext.napoleon',
     'sphinx_design',
     'nbsphinx',
 ]
@@ -57,7 +57,7 @@ html_theme_options = {
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
 
-# -- Data type specs
+# -- Data type specs fix
 import re
 _ARRAYLIKE_RE = re.compile(
     r'~jax\.jaxlib\._jax\.Array \| ~numpy\.ndarray \| ~numpy\.bool \| ~numpy\.number \| bool \| int \| float \| complex'
@@ -75,10 +75,6 @@ def _shorten_array_types(app, what, name, obj, options, signature, return_annota
 
 def setup(app):
     app.connect('autodoc-process-signature', _shorten_array_types)
-
-
-
-
 
 # -- Source button
 def linkcode_resolve(domain, info):
