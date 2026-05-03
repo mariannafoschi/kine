@@ -60,6 +60,8 @@ epub_show_urls = 'footnote'
 # -- Data type specs
 autodoc_type_aliases = {
     'ArrayLike': 'ArrayLike',
+    'jax.typing.ArrayLike': 'ArrayLike',
+    'jaxlib.xla_extension.ArrayImpl': 'Array',
 }
 
 # -- Source button
