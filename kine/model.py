@@ -35,11 +35,12 @@ def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
 
     .. math::
 
-        \\text{sharpGELU}(x) = \\frac{x}{2} \\left(1 + \\tanh\\left(s \\cdot x\\right)\\right)
+        \\text{sharpGELU}(x) = \frac{1}{2}\left(1 + \tanh\left(\sqrt{\frac{2}
+        {\pi}}\left(sx + 0.044715\, x^3\right)\right)\right)
 
     Args:
-        x: input array.
-        s: sharpness factor.
+        x (ArrayLike): input array.
+        s (float): sharpness factor.
     
     Returns:
         Output array.
