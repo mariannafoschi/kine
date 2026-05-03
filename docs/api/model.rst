@@ -27,6 +27,8 @@ model
 
    ~kine.model.posenc
    ~kine.model.sharpgelu
+
+**Neural fields**
    
 .. autoclass:: kine.model.NeuralField
    :members:
@@ -38,6 +40,8 @@ model
    :undoc-members:
    :show-inheritance:
 
+**Telescope gain modules**
+
 .. autoclass:: kine.model.AmplitudeGains
    :members:
    :undoc-members:
@@ -47,6 +51,8 @@ model
    :members:
    :undoc-members:
    :show-inheritance:
+
+**Activation and encoding helpers**
 
 .. autofunction:: kine.model.posenc
    

@@ -60,11 +60,12 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
         \\sin(2^\\text{deg}x),\\cos(2^\\text{deg}x)\\right]
 
 
-    Instead of computing [sin(x), cos(x)], we use the trig. identity
-    cos(x) = sin(x + pi/2) and do one vectorized call to sin([x, x+pi/2]).
+    Instead of computing :math:`[\\sin(x), \\cos(x)]`, we use the trigonometric 
+    identity :math:`\\cos(x) = \\sin(x + \\pi/2)` and do one vectorized call to 
+    :math:`\\sin([x, x+\\pi/2])`.
 
     Args:
-        x (ArrayLike): Variable to be encoded. Note that x should be in [-pi, pi].
+        x (ArrayLike): Variable to be encoded. Input x should be in [-pi, pi].
         deg (tuple[int]): The degree of the encoding.
 
     Returns:
