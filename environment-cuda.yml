@@ -1,0 +1,48 @@
+name: kine
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  # Keep conda focused on Python and packages with non-Python system libraries.
+  # JAX's CUDA/cuDNN/NCCL runtime comes from the pip `jax[cuda12]` extra.
+  - python=3.11.*
+  - pip
+  - setuptools
+  - wheel
+  - git
+  - cmake
+  - ninja
+
+  # Core runtime stack used by kine and the examples.
+  - numpy=1.25.*
+  - scipy=1.11.*
+  - astropy
+  - matplotlib-base
+  - pyyaml
+  - tqdm
+  - typing_extensions
+
+  # NUFFT support. pynfft/nfft are compiled packages and should be solved by
+  # conda before pip installs the Python/JAX stack.
+  - fftw
+  - nfft
+  - pynfft
+  - finufft
+
+  # Video writing and distribution tooling.
+  - ffmpeg
+  - conda-pack
+
+  - pip:
+      # jax-finufft's current source requires the JAX FFI API, while ehtim's
+      # pynfft path still needs NumPy 1.x. JAX 0.5 satisfies both constraints.
+      - "numpy==1.25.1"
+      - "scipy==1.11.4"
+      - "jax[cuda12]==0.5.0"
+      - "flax==0.10.2"
+      - "optax==0.2.5"
+      - nanobind
+      - scikit-build-core
+      - setuptools_scm
+      - "pydantic>=2"
+      - "ehtim==1.2.10"
