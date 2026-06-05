@@ -56,23 +56,34 @@ class Trainer(train_state.TrainState):
     def _which_loss_fn(*args, **kwargs):
         """Select the loss function based on the input arguments."""
         if 'min_lcurve' not in kwargs:
+            # for simple static imaging
             if 'grid' in kwargs and kwargs['grid'].shape[-1] < 3:
+                # init
                 if 'init_img' in kwargs:
                     return Trainer._loss_fn_init_2d(*args, **kwargs)
+                # training
                 return Trainer._loss_fn_2d(*args, **kwargs)
+            # init a normal video netwrok   
             if 'init_vid' in kwargs:
                 return Trainer._loss_fn_init(*args, **kwargs)
+            # initialize pol part of the network with I fixed (given)   
             if 'init_vid_ml' in kwargs:
                 return Trainer._loss_fn_init_pol(*args, **kwargs)
+            # for nfft dynamic imaging (without decomposition, eg multiepoch)   
             if 'uvpoints' in kwargs:
                 return Trainer._loss_fn_nfft(*args, **kwargs)
+            # training the pol part of the network with stokes I fixed     
             if 'init_vid_i' in kwargs:
                 return Trainer._loss_fn_pol(*args, **kwargs)
+            # for static + dynamic + flux ratio
             if 's_grid' in kwargs:
                 return Trainer._loss_fn_reg_gains(*args, **kwargs)
+            # for standard dynamic imaging (no decomposition)
             return Trainer._loss_fn(*args, **kwargs)
+        # for nfft static + dynamic imaging (e.g. decomposed multiepoch)
         if 'uvpoints' in kwargs:
             return Trainer._loss_fn_div_nfft(*args, **kwargs)
+        # for static + dynamic + gains (flux ratio already assigned)
         return Trainer._loss_fn_div_gains(*args, **kwargs)
 
     @staticmethod
