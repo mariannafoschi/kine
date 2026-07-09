@@ -5,3 +5,5 @@ __pycache__/
 docs/build/
 
 # macOS
+.DS_Store
+*/.DS_Store
