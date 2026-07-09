@@ -26,7 +26,7 @@ Available Features
 
 
 
-.. image:: images/kine_EHT.gif
+.. image:: images/kine_eht.gif
    :align: center
    :alt: kine video reconstruction from EHT-like data
 
