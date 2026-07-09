@@ -43,7 +43,7 @@ class Obsdata(eh.obsdata.Obsdata):
         See https://github.com/achael/eht-imaging/blob/main/ehtim/obsdata.py
     """
 
-    def get_zbl(self) -> float:
+    def get_zbl(self, mode: str = 'max') -> float:
         """Get shortest baseline flux density.
         
         Returns:
@@ -56,7 +56,12 @@ class Obsdata(eh.obsdata.Obsdata):
         idx = np.argmin(self.amp['baselength'])
         min_bl = [self.amp.iloc[idx]['t1'], self.amp.iloc[idx]['t2']]
         # Currently using max, prev. was median
-        return np.max(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
+        if mode=='max':
+            return np.max(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
+        elif mode=='median':
+            return np.median(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
+        else:
+            raise ValueError("Invalid mode. Use 'max' or 'median'.")
 
     def flag_empty(self) -> Self:
         """Flag sites with no measurements.

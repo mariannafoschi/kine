@@ -109,7 +109,7 @@ Total Bad Files: {len(bad)} \n
 # Fix metadata and empty array scans (hacky fix)
 for i, _ in enumerate(obslist):
     obslist[i].fix_multiepoch(obslist[-1])
-    if len(obslist[i].scans) == 0:
+    if obslist[i].scans is not None and len(obslist[i].scans) == 0:
         obslist[i].scans = None
 
 # Get light curve (or zbl flux density)

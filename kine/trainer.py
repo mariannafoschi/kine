@@ -240,12 +240,12 @@ class Trainer(train_state.TrainState):
         params, batch_stats, apply_fn = args
         # Unpack kwargs
         data = kwargs.get('data')
-        coords = kwargs.get('coords')
+        grid = kwargs.get('grid')
         lcurve = kwargs.get('lcurve')
         # Get video and batch stats
         image, updates = apply_fn(
             {'params': params, 'batch_stats': batch_stats},
-            coords, train=True, mutable=['batch_stats']
+            grid, train=True, mutable=['batch_stats']
             )
         # Separate polarimetric channels
         polchan = ['I']
@@ -740,10 +740,9 @@ class Trainer(train_state.TrainState):
     def _loss_vis_2d(image, data):
         vis = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
         return (
-            jnp.sum(
+            jnp.mean(
                 (jnp.abs(vis - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
+            ) / 2
         )
 
     @staticmethod
@@ -765,6 +764,17 @@ class Trainer(train_state.TrainState):
                 (jnp.abs(amp - data['target'])/data['sigma'])**2
                 * data['padmask']
             ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_amp_2d(image, data):
+        amp = jnp.abs(
+            jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
+        )
+        return (
+            jnp.mean(
+                (jnp.abs(amp - data['target'])/data['sigma'])**2
+            ) 
         )
 
     @staticmethod
@@ -791,97 +801,6 @@ class Trainer(train_state.TrainState):
                 (jnp.abs(logamp - data['target'])/data['sigma'])**2
                 * data['padmask']
             ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_amp_2d(image, data):
-        amp = jnp.abs(
-            jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
-        )
-        return (
-            jnp.sum(
-                (jnp.abs(amp - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
-        )
-
-    @staticmethod
-    def _loss_cphase(video, data):
-        data['target'] = jnp.deg2rad(data['target'])
-        data['sigma'] = jnp.deg2rad(data['sigma'])
-        vis1 = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video
-        ).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(
-            data['A'][:, 1, ...], video
-        ).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(
-            data['A'][:, 2, ...], video
-        ).squeeze(axis=-1)
-        cphase = jnp.angle(vis1 * vis2 * vis3)
-        return (
-            2 * jnp.sum(
-                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
-                * data['padmask']
-            ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_cphase_nfft(cphase, data):
-        data['target'] = jnp.deg2rad(data['target'])
-        data['sigma'] = jnp.deg2rad(data['sigma'])
-        return (
-            2 * jnp.sum(
-                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
-                * data['padmask']
-            ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_cphase_2d(image, data):
-        data['target'] = jnp.deg2rad(data['target'])
-        data['sigma'] = jnp.deg2rad(data['sigma'])
-        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
-        cphase = jnp.angle(vis1 * vis2 * vis3)
-        return (
-            2 * jnp.sum(
-                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
-                * data['padmask']
-            ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_bs(video, data):
-        vis1 = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video
-        ).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(
-            data['A'][:, 1, ...], video
-        ).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(
-            data['A'][:, 2, ...], video
-        ).squeeze(axis=-1)
-        bs = vis1 * vis2 * vis3
-        return (
-            jnp.sum(
-                (jnp.abs(bs - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
-        )
-
-    @staticmethod
-    def _loss_bs_2d(image, data):
-        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
-        bs = vis1 * vis2 * vis3
-        return (
-            jnp.sum(
-                (jnp.abs(bs - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
         )
 
     @staticmethod
@@ -929,10 +848,86 @@ class Trainer(train_state.TrainState):
                 - jnp.log(jnp.abs(vis3)) \
                 - jnp.log(jnp.abs(vis4))
         return (
-            jnp.sum(
+            jnp.mean(
                 (jnp.abs(logcamp - data['target'])/data['sigma'])**2
+            )
+        )
+
+    @staticmethod
+    def _loss_cphase(video, data):
+        data['target'] = jnp.deg2rad(data['target'])
+        data['sigma'] = jnp.deg2rad(data['sigma'])
+        vis1 = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video
+        ).squeeze(axis=-1)
+        vis2 = jax.lax.batch_matmul(
+            data['A'][:, 1, ...], video
+        ).squeeze(axis=-1)
+        vis3 = jax.lax.batch_matmul(
+            data['A'][:, 2, ...], video
+        ).squeeze(axis=-1)
+        cphase = jnp.angle(vis1 * vis2 * vis3)
+        return (
+            2 * jnp.sum(
+                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
                 * data['padmask']
             ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_cphase_nfft(cphase, data):
+        data['target'] = jnp.deg2rad(data['target'])
+        data['sigma'] = jnp.deg2rad(data['sigma'])
+        return (
+            2 * jnp.sum(
+                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
+                * data['padmask']
+            ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_cphase_2d(image, data):
+        data['target'] = jnp.deg2rad(data['target'])
+        data['sigma'] = jnp.deg2rad(data['sigma'])
+        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
+        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
+        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
+        cphase = jnp.angle(vis1 * vis2 * vis3)
+        return (
+            2 * jnp.mean(
+                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
+            )
+        )
+
+    @staticmethod
+    def _loss_bs(video, data):
+        vis1 = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video
+        ).squeeze(axis=-1)
+        vis2 = jax.lax.batch_matmul(
+            data['A'][:, 1, ...], video
+        ).squeeze(axis=-1)
+        vis3 = jax.lax.batch_matmul(
+            data['A'][:, 2, ...], video
+        ).squeeze(axis=-1)
+        bs = vis1 * vis2 * vis3
+        return (
+            jnp.sum(
+                (jnp.abs(bs - data['target'])/data['sigma'])**2
+                * data['padmask']
+            ) / (2*data['padmask'].sum())
+        )
+
+    @staticmethod
+    def _loss_bs_2d(image, data):
+        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
+        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
+        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
+        bs = vis1 * vis2 * vis3
+        return (
+            jnp.mean(
+                (jnp.abs(bs - data['target'])/data['sigma'])**2
+            ) / 2
         )
 
     @staticmethod
@@ -967,10 +962,9 @@ class Trainer(train_state.TrainState):
         ).squeeze(axis=-1)
         mbreve = (visQ + 1j * visU) / visI
         return (
-            jnp.sum(
+            jnp.mean(
                 (jnp.abs(mbreve - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
+            ) / 2
         )
 
     @staticmethod

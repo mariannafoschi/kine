@@ -1,0 +1,52 @@
+# Data pre-processing
+# -----------------------------
+
+# Time averaging
+tavg: 60
+
+# Systematic noise
+syserr: 0.01
+
+# Minimum number of baselines per data snapshot
+min_bl: 0
+
+# Coordinates and data products
+# -----------------------------
+
+# Field of view
+fov_uas: 200
+
+# Space resolution
+npix: 64
+npix_out: 200
+
+# Data products
+data_prod: [cphaseI, logcampI]
+
+# Network initialization
+# -----------------------------
+
+init_params:
+  fwhm: 80
+  blur: 20
+  posx: 0 # negative is left
+  posy: 0 # negative is up
+
+# Training
+# -----------------------------
+
+# Initialization seed
+seed: 1
+
+# Number of epochs
+niter: 5000
+initniter: 2000
+
+# Degrees of positional encoding ([t, x, y])
+nposenc: [0, 0]
+
+# Network parameters
+depth: 4
+width: 256
+outshift: 10
+scaling_i: 1

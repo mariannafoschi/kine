@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Video object creation, plotting and related tasks."""
+"""Image and Video object creation, plotting and related tasks."""
 
 from typing import Any
 from collections.abc import Callable
@@ -29,15 +29,455 @@ from jax.typing import ArrayLike
 
 from . import utils as ut
 
+""" Creation, plotting, etc. of image and video arrays in full polarization.
+    The Image and Video classes aim to have all image and video arrays organized
+    under one common object to improve code readability and overall clearness. 
+    Plotting routines are also methods of these classes, which makes the code 
+    significantly cleaner. Saving and exporting methods are also included here.
+"""
+
+class Image:
+    """
+    Attributes:
+        npix: Number of pixels.
+        fov: Field of view in radians.
+        ra: Right ascension in fractional hours.
+        dec: Declination in fractional degrees.
+        niter: Current number of iterations. Mainly for plotting.
+        polchan: Number of polarization channels.
+        iarr: Stokes I image array.
+        larr: Lin. pol. frac. (ml) image array.
+        xarr: EVPA (xi) image array.
+        carr: Circ. pol. frac. (mc) image array.
+        qarr: Stokes Q image array.
+        uarr: Stokes U image array.
+        varr: Stokes V image array.
+        parr: Lin. pol. intensity image array.
+        loss: Current loss value. Mainly for plotting.
+        amp_gains: Fitted amplitude gains. Mainly for plotting.
+    
+    Todo:
+        * Add equivalent of save_gains
+    """
+
+    def __init__(
+            self,
+            npix: int,
+            fov: float,
+            ra: float,
+            dec: float,
+            niter: int
+    ) -> None:
+        """Initialize class attributes.
+
+        Args:
+            npix: Number of pixels.
+            fov: Field of view in radians.
+            ra: Right ascension in fractional hours.
+            dec: Declination in fractional degrees.
+            niter: Current number of iterations.
+        """
+        self.npix: int = npix
+        self.fov: float = fov
+        self.ra: float = ra
+        self.dec: float = dec
+        self.niter: int = niter
+        self.polchan: int = 1
+        self.iarr: ArrayLike | None = None
+        self.larr: ArrayLike | None = None
+        self.xarr: ArrayLike | None = None
+        self.carr: ArrayLike | None = None
+        self.qarr: ArrayLike | None = None
+        self.uarr: ArrayLike | None = None
+        self.varr: ArrayLike | None = None
+        self.parr: ArrayLike | None = None
+        self.loss: list[float] | dict | None = None
+        self.amp_gains: dict | None = None
+
+    def add_tophat(self, totflux: float, params: dict) -> None:
+        """Add a flat disk to the image.
+
+        Args:
+            totflux: Total flux of the disk.
+            params: Disk size ('fwhm'), blurring ('blur', in uas), and
+                x, y position shift ('posx', 'posy', in pixel units).
+        """
+        # Create disk image
+        disk = eh.image.make_empty(self.npix, self.fov, self.ra, self.dec)
+        disk = disk.add_tophat(1, params['fwhm']*eh.RADPERUAS/2)
+        disk = disk.blur_circ(params['blur']*eh.RADPERUAS)
+        disk = disk.shift([params['posy'], params['posx']])
+        # Rescale flux to total flux
+        disk.imvec *= totflux / disk.total_flux()
+        # Make JAX array with shape (npix, npix, 1)
+        self.iarr = jnp.array(disk.imarr())[..., jnp.newaxis]
+
+    def add_image_i(self, inpath: str) -> None:
+        """Load Stokes I image.
+
+        Args:
+            inpath: Path to fits file.
+        """
+        image = eh.image.load_fits(inpath)
+        image = image.regrid_image(self.fov, self.npix)
+        self.iarr = jnp.array(image.imarr())[..., jnp.newaxis]
+
+    def add_constant_linpol(
+            self,
+            linpolfrac: float = 0.2,
+            evpa: float = -1.0
+    ) -> None:
+        """Add constant polarization to the image.
+
+        Args:
+            linpolfrac: Linear polarization fraction value.
+            evpa: EVPA value.
+        """
+        self.polchan = 3
+        self.larr = linpolfrac * jnp.ones((self.npix, self.npix, 1))
+        self.xarr = evpa * jnp.ones((self.npix, self.npix, 1))
+
+    def add_constant_circpol(self, circpolfrac: float = 0.05) -> None:
+        """Add constant polarization to the image.
+
+        Args:
+            circpolfrac: Circular polarization fraction value.
+        """
+        self.polchan = 4
+        self.carr = circpolfrac * jnp.ones((self.npix, self.npix, 1))
+
+    def from_state(
+            self,
+            state: Callable,
+            grid: ArrayLike,
+            loss: list[float] | dict | None = None
+    ) -> None:
+        """Create Image object from current network's state.
+
+        Intended for re-sampling on a different grid of
+        space-time coordinates.
+        
+        Args:
+            state: Current network's state.
+            grid: Input space-time coordinates.
+            loss: Current loss value.
+        """
+        out, _ = state.apply_fn(
+            {'params': state.params, 'batch_stats': state.batch_stats},
+            grid, train=True, mutable=['batch_stats']
+        )
+        polchan = out.shape[-1]
+        self.iarr = out[..., 0].reshape(self.npix, self.npix, 1)
+        if polchan > 1:
+            self.larr = out[..., 1].reshape(self.npix, self.npix, 1)
+            self.xarr = jnp.arctan2(
+                out[..., 2], out[..., 3]
+            ).reshape(self.npix, self.npix, 1) * 0.5
+            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
+            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
+            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+        if polchan > 4:
+            self.carr = out[..., 4].reshape(self.npix, self.npix, 1)
+            self.varr = self.iarr * self.carr
+        self.loss = loss
+
+    def from_image(
+            self,
+            out: ArrayLike,
+            loss: list[float] | dict | None = None,
+            amp_gains: dict | None = None
+    ) -> None:
+        """Create Image object from image array.
+
+        Args:
+            out: Image array sampled from the network.
+            loss: Current loss value.
+            amp_gains: Fitted visibility amplitude gains.
+        """
+        polchan, dim = out.shape[-1], 1
+        # total intensity
+        if polchan != 3:
+            dim -= 1
+            self.iarr = out[..., 0].reshape(self.npix, self.npix, 1)
+        # linear polarization
+        if polchan > 1:
+            self.polchan = 3
+            self.larr = out[..., 1-dim].reshape(self.npix, self.npix, 1)
+            self.xarr = jnp.arctan2(
+                out[..., 2-dim], out[..., 3-dim]
+            ).reshape(self.npix, self.npix, 1) * 0.5
+            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
+            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
+            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+        # circular polarization
+        if polchan > 4:
+            self.polchan = 4
+            self.carr = out[..., 4-dim].reshape(self.npix, self.npix, 1)
+            self.varr = self.iarr * self.carr
+        self.loss = loss
+        self.amp_gains = amp_gains
+
+    def from_fits(
+            self,
+            inpath: str,
+            blur: float = 0,
+            fn: Callable | None = None
+    ) -> None:
+        """Create Image object from input fits file.
+
+        Note:
+            Currently it only supports Stokes I.
+
+        Args:
+            inpath: Input path of fits file.
+            blur: Blurring factor in uas.
+        """
+        init = eh.image.load_fits(inpath)
+        init = init.regrid_image(self.fov, self.npix)
+        if blur > 0:
+            init = init.blur_circ(blur*eh.RADPERUAS)
+        init = init.imarr()
+        init = init/init.sum()
+        init = jnp.array(init)
+        self.iarr = init.reshape(self.npix, self.npix, 1)
+
+    def plot(
+            self,
+            out: ArrayLike | None = None,
+            scale: str = 'lin',
+            drange: float = 1e3,
+            vstep: int = 3,
+            vscale: float = 0.05,
+            show: bool = False,
+            outpath: str = './tmp.png'
+    ) -> None:
+        """Plot image (and current loss) from Image object in full polarization.
+
+        General plotting function for static imaging.
+        If fitting for linear polarization, pol. field vectors,
+        lin. pol. frac., and EVPA plots will be shown along Stokes I.
+        If training, loss progress will be shown as well.
+        ...
+
+        Args:
+            out: Image array.
+            scale: 'lin' for linear color scale, 'log' for logarithmic.
+            drange: Image dynamic range. Used when scale='log'.
+            vstep: Pol. field vectors' spacing.
+            vscale: Pol. field vectors' scaling factor.
+            show: If true, show interactive plot.
+            outpath: Path and filename for figure saving.
+        """
+        # Preamble
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Helvetica', 'DejaVu Sans']
+        plt.rcParams['font.size'] = 14
+        plt.rcParams['image.interpolation'] = 'bicubic'
+        # Extent
+        extent = [
+            self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            self.fov/2/eh.RADPERUAS
+        ]
+        # Scale bar
+        barl = self.fov / eh.RADPERUAS / 5
+        # Set colorbar scale
+        def normalize(arr, scale=scale, drange=drange):
+            vmin, vmax = arr.min(), arr.max()
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            if scale == 'log':
+                vmin = vmax / drange
+                norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
+            return vmin, vmax, norm
+        
+        # Select frames to show
+        # Titles, colormaps, etc
+        cmap = ['inferno', 'viridis', 'twilight', 'coolwarm']
+        label = ['Stokes I', 'Lin. pol. frac.', 'EVPA', 'Circ. pol. frac.']
+        # Subfiguring
+        fig = plt.figure(figsize=(5, 6*self.polchan))
+        subfigs = fig.subfigures(self.polchan, 1)
+        subfigs = np.atleast_1d(subfigs)
+        # Plotting
+        for j, subfig in enumerate(subfigs):
+            if self.loss is not None and j == 0:
+                ncols = 2
+            else:
+                ncols = 1
+            ax = subfig.subplots(1, ncols)
+            ax = np.atleast_1d(ax).ravel()
+            if j == 0:
+                arr = self.iarr
+            elif j == 1:
+                arr = self.larr
+            else:
+                arr = self.xarr
+            vmin, _, norm = normalize(arr)
+            # Stokes I, ml, and EVPA
+            ax[0].imshow(arr + vmin, extent=extent, norm=norm, cmap=cmap[j])
+            ax[0].set_xticks([])
+            ax[0].set_yticks([])
+            # Flux label
+            if j == 0:
+                ax[0].text(1, -0.01, f'$S_{{tot}}$: {arr.sum():.1f} Jy', 
+                        c='k', ha='right', va='top', fontsize=12, 
+                        transform=ax[0].transAxes
+                )
+            # Pol. field vectors on top of Stokes I
+            if self.qarr is not None and j == 0:
+                x = np.linspace(extent[0], extent[1], self.npix)
+                y = np.linspace(extent[0], extent[1], self.npix)
+                vx = np.sin(
+                    np.angle(self.qarr + 1j * self.uarr) / 2
+                ) * self.parr * -1
+                vy = np.cos(
+                    np.angle(self.qarr + 1j * self.uarr) / 2
+                ) * self.parr
+                ax[0].quiver(
+                    x[::vstep],
+                    y[::vstep],
+                    vx[::vstep, ::vstep, 0],
+                    vy[::vstep, ::vstep, 0],
+                    self.larr[::vstep, ::vstep, 0],
+                    pivot='mid',
+                    angles='uv',
+                    width=0.01,
+                    scale=vscale,
+                    headwidth=0,
+                    headlength=0,
+                    headaxislength=0,
+                    cmap='viridis'
+                )
+            # Channel labels
+            ax[0].text(
+                0,
+                1.08,
+                f'{label[j]}',
+                fontsize=16,
+                weight='bold',
+                c='k',
+                ha='left',
+                va='bottom',
+                transform=ax[0].transAxes
+            )
+            # Scale bar
+            ax[0].text(
+                0.1,
+                -0.03,
+                f'{round(barl):1d} $\mu$as',
+                c='k',
+                ha='center',
+                va='top',
+                transform=ax[0].transAxes
+            )
+            ax[0].hlines(
+                -0.02,
+                0,
+                0.2,
+                transform=ax[0].transAxes,
+                colors='k',
+                lw=3,
+                clip_on=False
+            )
+            # Loss progress
+            if self.loss is not None and j == 0:
+                ax[-1].clear()
+                if isinstance(self.loss, dict):
+                    for l in self.loss:
+                        ax[-1].plot(
+                            np.linspace(
+                                0,
+                                len(self.loss[l]),
+                                len(self.loss[l][::50])
+                            ),
+                            self.loss[l][::50],
+                            label=f'{l} = {self.loss[l][-1]:.3e}'
+                        )
+                        ax[-1].axhline(1, c='k', lw=0.5, zorder=0)
+                else:
+                    ax[-1].plot(
+                        np.linspace(
+                            0,
+                            len(self.loss),
+                            len(self.loss[::50])
+                        ),
+                        self.loss[::50],
+                        label=f'loss = {self.loss[-1]:.3e}'
+                    )
+                ax[-1].set_yscale('log')
+                ax[-1].set_xlim(-self.niter/50, self.niter+self.niter/50)
+                ax[-1].set_xlabel('iterations')
+                ax[-1].yaxis.tick_right()
+                ax[-1].grid(alpha=0.5)
+                ax[-1].set_aspect('auto')
+                ax[-1].set_adjustable('box')
+                ax[-1].set_box_aspect(1)
+                ax[-1].legend(
+                    loc='upper right',
+                    bbox_to_anchor=(1, 1),
+                    fontsize=12
+                )
+                # Adjust plots spacing
+                subfig.subplots_adjust(wspace=0.05)
+        fig.tight_layout()
+
+        # Show interactive plot or save to file
+        if show:
+            plt.show()
+        else:
+            fig.savefig(outpath, bbox_inches='tight')
+            plt.close()
+
+    @staticmethod
+    def async_plot(q: Callable) -> None:
+        """Asynchronous plotting routine.
+
+        Plot results from CPU without stopping GPU computations.
+        It loads the network output on a separate thread.
+
+        Note:
+            Not very matplotlib-safe because of threading, but it
+            works just fine so far. Warnings may appear occasionally.
+        
+        Args:
+            q: Queue object where output is loaded.
+        
+        Todo:
+            * Make sure arrays are transferred to CPU.
+        """
+        def _async_plot_impl(
+                *,
+                image,
+                out,
+                **kwargs,
+        ):
+            image.from_image(out)
+            image.loss = kwargs.pop('loss', None)
+            image.amp_gains = kwargs.pop('amp_gains', None)
+            image.plot(**kwargs)
+        # Unpack queue
+        while True:
+            _async_plot_impl(**q.get())
+            q.task_done()
+
+    def save_fits(self, outpath: str = './image.fits') -> None:
+        """Save image to fits file.
+
+        Args:
+            outpath: Path and filename of output file.
+        """
+        image = eh.image.make_empty(self.npix, self.fov, self.ra, self.dec)
+        image.imvec = self.iarr[..., 0].ravel()
+        if self.qarr is not None:
+            image.add_qu(self.qarr[..., 0], self.uarr[..., 0])
+        if self.varr is not None:
+            image.add_v(self.varr[..., 0])
+        with ut.no_print():
+            image.save_fits(outpath)
 
 class Video:
-    """Creation, plotting, etc. of video arrays in full pol.
-
-    Aims to have all video arrays organized under one common object
-    to improve code readability and overall clearness. Plotting routines
-    are also methods of this class, which makes the code significantly
-    cleaner. Saving and exporting methods are as well included here.
-
+    """
     Attributes:
         times: UT time in hours assigned to each video frame.
         dates: YYYY-MM-DD date assigned to each video frame.
@@ -111,7 +551,7 @@ class Video:
 
         Args:
             lcurve: Light-curve array for the time-variable disk flux density.
-            params: Diks size ('fwhm'), blurring ('blur', in uas), and
+            params: Disk size ('fwhm'), blurring ('blur', in uas), and
                 x, y position shift ('posx', 'posy', in pixel units).
         """
         # Create disk image
@@ -276,6 +716,7 @@ class Video:
         if polchan != 3:
             dim -= 1
             self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1)
+        # linear polarization
         if polchan > 1:
             self.polchan = 3
             self.larr = out[..., 1-dim].reshape(-1, self.npix, self.npix, 1)
@@ -285,6 +726,7 @@ class Video:
             self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
             self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
             self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+        # circular polarization
         if polchan > 4:
             self.polchan = 4
             self.carr = out[..., 4-dim].reshape(-1, self.npix, self.npix, 1)
@@ -306,7 +748,7 @@ class Video:
         Args:
             inpath: Input path of h5 file.
             blur: Blurring factor in uas.
-            fn: Averaging function (np.mean, np.median, etc.).
+            fn: Time averaging function (np.mean, np.median, etc.).
         """
         init = eh.movie.load_hdf5(inpath).im_list()
         init = [im.regrid_image(self.fov, self.npix) for im in init]
