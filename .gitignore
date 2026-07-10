@@ -7,3 +7,6 @@ docs/build/
 # macOS
 .DS_Store
 */.DS_Store
+
+# private notes
+troubleshooting.md
