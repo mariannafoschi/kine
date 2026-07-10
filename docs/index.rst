@@ -36,9 +36,10 @@ Documentation
 .. toctree::
    :maxdepth: 2
 
-   getting_started
-   parameters
+   installation
+   quick_start
    user_guide
+   parameters
    api/index
 
 
