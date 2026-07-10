@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Antonio Fuentes
+# Copyright (C) 2026 Marianna Foschi, Antonio Fuentes, Brandon Zhao
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
