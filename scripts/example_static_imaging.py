@@ -74,8 +74,6 @@ np.random.seed(h.seed)
 # ______________________________________________________________________________
 # Load and pre-process data
 
-obslist = [] ############ remove variable
-
 print("-------\nLoading observed data...\n")
 
 try:
@@ -85,10 +83,6 @@ try:
         obs = obs.add_fractional_noise(h.syserr)
 except Exception as e:
     print(f'Could not load {path}: {e} \n')
-
-##### Fix empty array scans ####### Probably I can remove this
-####if len(obs.scans) == 0:
-####    obs.scans = None
 
 # Get light curve (or zbl flux density)
 totflux = obs.get_zbl()
@@ -211,8 +205,6 @@ for i in (pbar := tqdm(range(1, h.initniter+1))):
                 image=init,
                 out=out,
                 loss=lloss,
-                scale='log',
-                drange=5e2,
                 outpath='./output_init.png'
             )
         )

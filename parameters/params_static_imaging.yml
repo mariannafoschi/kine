@@ -14,7 +14,7 @@ min_bl: 0
 # -----------------------------
 
 # Field of view
-fov_uas: 200
+fov_uas: 160
 
 # Space resolution
 npix: 64
