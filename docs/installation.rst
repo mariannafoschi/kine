@@ -25,6 +25,7 @@ GitHub after the `kine` environment exists:
 .. code-block:: bash
 
    conda activate kine
+   cd ..
    git clone --recursive https://github.com/dfm/jax-finufft.git
    cd jax-finufft
 
@@ -53,7 +54,7 @@ Return to the `kine` repository:
 
 .. code-block:: bash
 
-   cd /path/to/kine
+   cd ../kine
    python -m pip install --no-deps --no-build-isolation -e .
    python scripts/check_kine_cuda.py --require-gpu --require-nufft
 
