@@ -122,6 +122,22 @@ class Obsdata(eh.obsdata.Obsdata):
         self.bw = refobs.bw
         self.timetype = refobs.timetype
         self.polrep = refobs.polrep
+
+    def fix_multifreq(self, refobs: Self) -> None:
+        """Fix metadata for multi-frequency imaging.
+        
+        Given a reference Obsdata object, change metadata of
+        current Obsdata so they match. Same as fix_multiepoch but no
+        frequency and bandwidth matching
+
+        Args:
+            refobs: Reference Obsdata object.
+        """
+        self.source = refobs.source
+        self.ra = refobs.ra
+        self.dec = refobs.dec
+        self.timetype = refobs.timetype
+        self.polrep = refobs.polrep
     
     def avg_coherent(self, tavg: float, scan_avg: bool = False) -> Self:
         """Wrapper for ehtim's coherent time-averaging.
