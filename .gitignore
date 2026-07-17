@@ -10,3 +10,6 @@ docs/build/
 
 # private notes
 troubleshooting.md
+
+# output folder
+output/*
