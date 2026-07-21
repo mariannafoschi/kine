@@ -49,12 +49,15 @@ class Obsdata(eh.obsdata.Obsdata):
         Returns:
             Maximum visibility amplitude of shortest baseline.
         """
+        # Save amp and restore (avoids bugs with amp chi2 computation)
+        amp_backup = self.amp
         # Suppress ehtim's printing
         with ut.no_print():
             self.add_amp(return_type='df')
         # Select shortest baseline
         idx = np.argmin(self.amp['baselength'])
         min_bl = [self.amp.iloc[idx]['t1'], self.amp.iloc[idx]['t2']]
+        self.amp = amp_backup
         # Currently using max, prev. was median
         if mode=='max':
             return np.max(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
