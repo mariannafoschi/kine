@@ -298,7 +298,7 @@ for i in (pbar := tqdm(range(1, h.initniter_0+1))):
         odict(
             state=s_state,
             grid=s_grid,
-            init_img=init_img.iarr
+            init_arr=init_img.iarr
         )
     )
 
@@ -341,7 +341,7 @@ for i in (pbar := tqdm(range(1, h.initniter_0+1))):
         odict(
             state=d_state,
             grid=d_grid,
-            init_vid=init_vid.iarr
+            init_arr=init_vid.iarr
         )
     )
 
@@ -616,7 +616,7 @@ for i in (pbar := tqdm(range(1, h.initniter_1+1))):
         odict(
             state=s_state,
             grid=s_grid,
-            init_img=init_img.iarr
+            init_arr=init_img.iarr
         )
     )
 
@@ -659,7 +659,7 @@ for i in (pbar := tqdm(range(1, h.initniter_1+1))):
         odict(
             state=d_state,
             grid=d_grid,
-            init_vid=init_vid.iarr
+            init_arr=init_vid.iarr
         )
     )
 
@@ -971,7 +971,7 @@ for i in (pbar := tqdm(range(1, h.initniter_2+1))):
         odict(
             state=s_state,
             grid=s_grid,
-            init_img=init_img.iarr
+            init_arr=init_img.iarr
         )
     )
 
@@ -1014,7 +1014,7 @@ for i in (pbar := tqdm(range(1, h.initniter_2+1))):
         odict(
             state=d_state,
             grid=d_grid,
-            init_vid=init_vid.iarr
+            init_arr=init_vid.iarr
         )
     )
    

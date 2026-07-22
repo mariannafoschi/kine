@@ -191,7 +191,7 @@ for i in (pbar := tqdm(range(1, h.initniter+1))):
         odict(
             state=state,
             grid=grid,
-            init_img=init_im.iarr
+            init_arr=init_im.iarr
         )
     )
    

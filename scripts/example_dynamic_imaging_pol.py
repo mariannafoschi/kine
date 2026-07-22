@@ -105,9 +105,6 @@ with ut.no_print():
     # Split data
     obslist = obs.split_obs(min_bl=h.min_bl)
 
-    # Get light curve (or zbl flux density)
-    lcurve = obs.get_lightcurve(min_bl=h.min_bl)
-
 # ______________________________________________________________________________
 # Set up grid of input coordinates and data products
 
