@@ -53,99 +53,173 @@ class Trainer(train_state.TrainState):
     batch_stats: Any | None = None
 
     @staticmethod
-    def _which_loss_fn(*args, **kwargs):
-        """Select the loss function based on the input arguments."""
-        if 'min_lcurve' not in kwargs:
-            # for simple static imaging
-            if 'grid' in kwargs and kwargs['grid'].shape[-1] < 3:
-                # init
-                if 'init_img' in kwargs:
-                    return Trainer._loss_fn_init_2d(*args, **kwargs)
-                # training
-                return Trainer._loss_fn_2d(*args, **kwargs)
-            # init a normal video netwrok   
-            if 'init_vid' in kwargs:
-                return Trainer._loss_fn_init(*args, **kwargs)
-            # initialize pol part of the network with I fixed (given)   
-            if 'init_vid_ml' in kwargs:
-                return Trainer._loss_fn_init_pol(*args, **kwargs)
-            # for nfft dynamic imaging (without decomposition, eg multiepoch)   
-            if 'uvpoints' in kwargs:
-                return Trainer._loss_fn_nfft(*args, **kwargs)
-            # training the pol part of the network with stokes I fixed     
-            if 'init_vid_i' in kwargs:
-                return Trainer._loss_fn_pol(*args, **kwargs)
-            # for static + dynamic + flux ratio
-            if 's_grid' in kwargs:
-                return Trainer._loss_fn_reg_gains(*args, **kwargs)
-            # for standard dynamic imaging (no decomposition)
-            return Trainer._loss_fn(*args, **kwargs)
-        # for nfft static + dynamic imaging (e.g. decomposed multiepoch)
-        if 'uvpoints' in kwargs:
-            return Trainer._loss_fn_div_nfft(*args, **kwargs)
-        # for static + dynamic + gains (flux ratio already assigned)
-        return Trainer._loss_fn_div_gains(*args, **kwargs)
+    @jax.jit
+    def train_step(kwargs: OrderedDict) -> list[Array]:
+        """Training step.
+
+        Args:
+            kwargs: Training states and other variables required
+                for loss computations. Input as an OrderedDict since
+                @jax.jit can change the order in which kwargs are passed.
+
+        Returns:
+            Total loss, loss dictionary, sampled video, and training states
+        """
+        # Unpack states
+        keys = list(kwargs.keys())
+        states = [kwargs.pop(key) for key in keys if 'state' in key]
+        params = [s.params for s in states]
+        batch_stats = [s.batch_stats
+                       for s in states if s.batch_stats is not None]
+        apply_fn = [s.apply_fn for s in states]
+        argnums = tuple(range(len(states)))
+        args = params + batch_stats + apply_fn
+        # Get and apply gradients
+        (loss, (updates, ldict, video)), grads = jax.value_and_grad(
+            Trainer._loss_fn_red, argnums=argnums, has_aux=True
+        )(*args, **kwargs)
+        states = [state.apply_gradients(grads=grad)
+                  for state, grad in zip(states, grads)]
+        # Update batch stats if available
+        updatables = [s for s in states if s.batch_stats is not None]
+        nonupdatables = [s for s in states if s.batch_stats is None]
+        states = [s.replace(batch_stats=u['batch_stats'])
+                  for s, u in zip(updatables, updates)] \
+               + nonupdatables
+        return loss, ldict, *video, *states
 
     @staticmethod
-    def _loss_fn(*args, **kwargs):
-        """Loss function for training a general dynamic network."""
+    def _loss_fn_red(*args, **kwargs):
+        loss, (*updates, ldict, video) = Trainer._which_loss_fn(
+            *args, **kwargs
+        )
+        updates = [jax.tree_map(lambda x: jnp.mean(x, axis=0), updates[i])
+                    for i in range(len(updates))]
+        return loss, (updates, ldict, video)
+
+    @staticmethod
+    def _which_loss_fn(*args, **kwargs):
+        """Select the loss function based on the input arguments."""
+
+        # === Initialization losses ===========================================
+
+        # Initialize network (both 2D and 3D)
+        if 'init_arr' in kwargs:
+            return Trainer._loss_fn_init(*args, **kwargs)
+        # Initialize network (polarimetric channels only, I is ignored)
+        if 'init_vid_ml' in kwargs:
+            return Trainer._loss_fn_init_pol(*args, **kwargs)
+
+        # === Training losses =================================================
+
+        # --- NFFT Training losses --------------------------------------------
+
+        if 'uvpoints' in kwargs:
+            # Dynamic imaging
+            return Trainer._loss_fn_nfft(*args, **kwargs)
+
+        # --- Direct FT Training losses ---------------------------------------
+
+        # Dynamic imaging, with stokes I fixed 
+        if 'init_vid_i' in kwargs:
+            return Trainer._loss_fn_pol(*args, **kwargs)
+
+        # Basic Static or Dynamic imaging
+        if 'grid' in kwargs:
+            return Trainer._loss_fn(*args, **kwargs)
+            
+        # Dynamic imaging (static + dynamic decomposition)
+        if 's_grid' in kwargs:
+            # Flux ratio already assigned + gain fitting
+            if 'min_lcurve' in kwargs:
+                return Trainer._loss_fn_div_gains(*args, **kwargs)
+            # Flux ratio to be learned + gain fitting
+            return Trainer._loss_fn_div_gains_fluxreg(*args, **kwargs)
+
+# Initialization loss functions ------------------------------------------------
+
+    @staticmethod
+    def _loss_fn_init(*args, **kwargs):
+        """Loss function for initializing a general 2D or 3D network."""
+        # Unpack state
+        params, batch_stats, apply_fn = args
+        # Unpack kwargs
+        grid = kwargs.get('grid')
+        init_arr = kwargs.get('init_arr')
+        # Get video and batch stats
+        netout, updates = apply_fn(
+            {'params': params, 'batch_stats': batch_stats},
+            grid, train=True, mutable=['batch_stats']
+            )
+        # Separate polarimetric channels
+        polchan = ['I']
+        if netout.shape[-1] == 4:
+            polchan = ['I', 'Ml', 'X']
+        if netout.shape[-1] == 5:
+            polchan = ['I', 'Ml', 'X', 'Mc']
+        netoutpol = {
+            pol: netout[..., 0] if pol == 'I'
+            else netout[..., 1] if pol == 'Ml'
+            else jnp.arctan2(netout[..., 2], netout[..., 3]) * 0.5 if pol == 'X'
+            else netout[..., 4]
+            for pol in polchan
+            }
+        initpol = {pol: init_arr[..., i] for i, pol in enumerate(polchan)}
+        # Initialize loss
+        loss = []
+        # Loss function for data products
+        for pol in polchan:
+            chi2 = jnp.mean(jnp.square(netoutpol[pol]
+                 - initpol[pol].reshape(netoutpol[pol].shape))
+                 )
+            loss.append(chi2)
+        return jnp.sum(jnp.array(loss)), (updates, None, (netout,))
+        
+    @staticmethod
+    def _loss_fn_init_pol(*args, **kwargs):
+        """Loss function for initializing a general network for Stokes Q and U 
+        only, useful when Stokes I is fixed (given)."""
         # Unpack states
         params, batch_stats, apply_fn = args
         # Unpack kwargs
-        data = kwargs.get('data')
         grid = kwargs.get('grid')
-        lcurve = kwargs.get('lcurve')
+        init_vid_ml = kwargs.get('init_vid_ml')
+        init_vid_x = kwargs.get('init_vid_x')
         # Get video and batch stats
         video, updates = apply_fn(
             {'params': params, 'batch_stats': batch_stats},
-            grid,
-            train=True,
-            mutable=['batch_stats']
-        )
+            grid, train=True, mutable=['batch_stats']
+            )
         # Separate polarimetric channels
-        polchan = ['I']
-        if video.shape[-1] == 4:
-            polchan = ['I', 'Q', 'U']
-        if video.shape[-1] == 5:
-            polchan = ['I', 'Q', 'U', 'V']
+        polchan = ['Ml', 'X']
         videopol = {
-            pol: ut.to_complex(video[..., 0]) if pol == 'I'
-            else ut.to_complex(
-                -video[..., 0] * video[..., 1] * video[..., 2]
-            ) if pol == 'Q'
-            else ut.to_complex(
-                video[..., 0] * video[..., 1] * video[..., 3]
-            ) if pol == 'U'
-            else ut.to_complex(
-                video[..., 0] * video[..., 4]
-            )
-            for pol in polchan
-        }
+            pol: video[..., 0] if pol == 'Ml'
+            else jnp.arctan2(video[..., 1], video[..., 2]) * 0.5
+            for _, pol in enumerate(polchan)
+            }
+        initpol = {
+            pol: init_vid_ml if pol == 'Ml'
+            else init_vid_x
+            for _, pol in enumerate(polchan)
+            }
         # Initialize loss dictionary
-        ldict = {}
-        # Data product loss functions
-        for dtype in data:
-            pol = dtype[-1]
-            chi2 = Trainer._loss_chi(
-                videopol[pol],
-                data[dtype],
-                dtype[:-1]
-            )
-            ldict[dtype] = chi2
-        # Regularizer loss functions
-        if lcurve is not None:
-            chi2 = Trainer._loss_lcurve(
-                lcurve,
-                videopol['I']
-            )
-            ldict['lcurve'] = chi2
-        # Total loss
-        loss = jnp.sum(jnp.array(list(ldict.values())))
-        return loss, (updates, ldict, (video,))
+        loss = []
+        # Loss function for data products
+        for pol in polchan:
+            chi2 = jnp.mean(jnp.square(videopol[pol]
+                 - initpol[pol].reshape(videopol[pol].shape[0], -1))
+                 )
+            loss.append(chi2)
+        return jnp.sum(jnp.array(loss)), (updates, None, (video,))
+
+# Training loss functions ------------------------------------------------------
 
     @staticmethod
     def _loss_fn_nfft(*args, **kwargs):
         """Loss function for training a general dynamic network using NUFFT."""
+
+        # TODO: Add support for polarimetric channels
+
         # Unpack states
         params, batch_stats, apply_fn = args
         # Unpack kwargs
@@ -190,6 +264,61 @@ class Trainer(train_state.TrainState):
         return loss, (updates, ldict, (video,))
 
     @staticmethod
+    def _loss_fn(*args, **kwargs):
+        """Loss function for training a general 2D or 3D network."""
+        # Unpack state
+        params, batch_stats, apply_fn = args
+        # Unpack kwargs
+        data = kwargs.get('data')
+        grid = kwargs.get('grid')
+        lcurve = kwargs.get('lcurve')
+        # Get network output and batch stats
+        netout, updates = apply_fn(
+            {'params': params, 'batch_stats': batch_stats},
+            grid, train=True, mutable=['batch_stats']
+        )
+        # Separate polarimetric channels
+        polchan = ['I']
+        if netout.shape[-1] == 4:
+            polchan = ['I', 'Q', 'U']
+        if netout.shape[-1] == 5:
+            polchan = ['I', 'Q', 'U', 'V']
+        netoutpol = {
+            pol: ut.to_complex(netout[..., 0]) if pol == 'I'
+            else ut.to_complex(
+                -netout[..., 0] * netout[..., 1] * netout[..., 2]
+            ) if pol == 'Q'
+            else ut.to_complex(
+                netout[..., 0] * netout[..., 1] * netout[..., 3]
+            ) if pol == 'U'
+            else ut.to_complex(
+                netout[..., 0] * netout[..., 4]
+            )
+            for pol in polchan
+        }
+        # Initialize loss dictionary
+        ldict = {}
+        # Data product loss functions
+        for dtype in data:
+            pol = dtype[-1]
+            chi2 = Trainer._loss_chi(
+                netoutpol[pol],
+                data[dtype],
+                dtype[:-1]
+            )
+            ldict[dtype] = chi2
+        # Regularizer loss functions
+        if lcurve is not None:
+            chi2 = Trainer._loss_lcurve(
+                lcurve,
+                netoutpol['I']
+            )
+            ldict['lcurve'] = chi2
+        # Total loss
+        loss = jnp.sum(jnp.array(list(ldict.values())))
+        return loss, (updates, ldict, (netout,))
+    
+    @staticmethod
     def _loss_fn_pol(*args, **kwargs):
         """Loss function for training a general dynamic network
         for Stokes Q and U having Stokes I fixed."""
@@ -232,87 +361,6 @@ class Trainer(train_state.TrainState):
         # Total loss
         loss = jnp.sum(jnp.array(list(ldict.values())))
         return loss, (updates, ldict, (video,))
-
-    @staticmethod
-    def _loss_fn_2d(*args, **kwargs):
-        """Loss function for training a general static network."""
-        # Unpack state
-        params, batch_stats, apply_fn = args
-        # Unpack kwargs
-        data = kwargs.get('data')
-        grid = kwargs.get('grid')
-        lcurve = kwargs.get('lcurve')
-        # Get video and batch stats
-        image, updates = apply_fn(
-            {'params': params, 'batch_stats': batch_stats},
-            grid, train=True, mutable=['batch_stats']
-            )
-        # Separate polarimetric channels
-        polchan = ['I']
-        if image.shape[-1] == 4:
-            polchan = ['I', 'Q', 'U']
-        if image.shape[-1] == 5:
-            polchan = ['I', 'Q', 'U', 'V']
-        imagepol = {
-            pol: ut.to_complex(image[..., 0]) if pol == 'I'
-            else ut.to_complex(
-                -image[..., 0] * image[..., 1] * image[..., 2]
-                               ) if pol == 'Q'
-            else ut.to_complex(
-                image[..., 0] * image[..., 1] * image[..., 3]
-                               ) if pol == 'U'
-            else ut.to_complex(
-                image[..., 0] * image[..., 4]
-                               )
-            for pol in polchan
-        }
-        # Initialize loss dictionary
-        ldict = {}
-        # Data product loss functions
-        for dtype in data:
-            pol = dtype[-1]
-            chi2 = Trainer._loss_chi(
-                imagepol[pol],
-                data[dtype],
-                dtype[:-1]
-                )
-            ldict[dtype] = chi2
-        # Regularizer loss functions
-        if lcurve is not None:
-            chi2 = Trainer._loss_lcurve_2d(
-                lcurve,
-                imagepol['I']
-                )
-            ldict['lcurve'] = chi2
-        # Total loss
-        loss = jnp.sum(jnp.array(list(ldict.values())))
-        return loss, (updates, ldict, (image,))
-
-    @staticmethod
-    def _loss_gains(
-        data,
-        ag_apply_fn,
-        ag_params,
-        pg_apply_fn,
-        pg_params,
-        bl_indx
-    ):
-        """Select which gain correction to apply based onthe data products
-        used for imaging."""
-        if any(x in data for x in ['ampI', 'logampI']):
-            dtype = 'ampI' if 'ampI' in data else 'logampI'
-            frames = jnp.arange(len(data[dtype]['target']), dtype=int)
-            visamp = data[dtype]['target'].copy()
-            agi, agj = ag_apply_fn({'params': ag_params}, bl_indx, frames)
-            return agi * agj * visamp
-
-        if 'visI' in data:
-            compvis = data['visI']['target'].copy()
-            frames = jnp.arange(len(data['visI']['target']), dtype=int)
-            agi, agj = ag_apply_fn({'params': ag_params}, bl_indx, frames)
-            pgi, pgj = pg_apply_fn({'params': pg_params}, bl_indx, frames)
-            gi, gj = agi * jnp.exp(1j * pgi), agj * jnp.exp(1j * pgj)
-            return gi * jnp.conj(gj) * compvis
 
     @staticmethod
     def _loss_fn_div_gains(*args, **kwargs):
@@ -381,12 +429,72 @@ class Trainer(train_state.TrainState):
         # Total loss
         loss = jnp.sum(jnp.array(list(ldict.values())))
         return loss, (s_updates, d_updates, ldict, (static, dynamic, video))
+    
+    @staticmethod
+    def _loss_fn_div_gains_fluxreg(*args, **kwargs):
+        """Loss function for training a static and dynamic network
+        while finding the static flux density through regularization."""
+        # Unpack states
+        s_params, d_params, ag_params, pg_params, \
+            s_batch_stats, d_batch_stats, s_apply_fn, \
+                d_apply_fn, ag_apply_fn, pg_apply_fn = args
+        # Unpack kwargs
+        data = kwargs.get('data')
+        s_grid = kwargs.get('s_grid')
+        d_grid = kwargs.get('d_grid')
+        bl_indx = kwargs.get('bl_indx')
+        w_border = kwargs.get('w_border', 1e3)
+        w_flux = kwargs.get('w_flux', 5)
+        # Get static and dynamic videos and batch stats
+        static, s_updates  = s_apply_fn(
+            {'params': s_params, 'batch_stats': s_batch_stats},
+            s_grid, train=True, mutable=['batch_stats']
+            )
+        dynamic, d_updates = d_apply_fn(
+            {'params': d_params, 'batch_stats': d_batch_stats},
+            d_grid, train=True, mutable=['batch_stats']
+            )
+        # Initialize loss dictionary
+        ldict = {}
+        # Border regularization
+        loss_bd = w_border * Trainer._loss_border(static[..., 0])
+        loss_bd += w_border * Trainer._loss_border(dynamic[..., 0])
+        ldict['border'] = loss_bd
+        # Flux regularization
+        # Minimize persistent flux in dynamic component
+        loss_min_dyn = w_flux * Trainer._loss_min_dynamics(dynamic[..., 0])
+        ldict['min_dyn'] = loss_min_dyn
+        # Add the static and dynamic outputs
+        video = static + dynamic
+        # Separate polarimetric channels
+        videopol = {'I': ut.to_complex(video[...,0])}
+        # Apply gain corrections
+        gain_corr_data = Trainer._loss_gains(
+            data,
+            ag_apply_fn,
+            ag_params,
+            pg_apply_fn,
+            pg_params,
+            bl_indx
+            )
+        # Data product loss functions
+        for dtype in data:
+            chi2 = Trainer._loss_chi(
+                videopol['I'],
+                data[dtype],
+                dtype[:-1],
+                gain_corr_data=gain_corr_data
+                )
+            ldict[dtype] = chi2
+        # Total loss
+        loss = jnp.sum(jnp.array(list(ldict.values())))
+        return loss, (s_updates, d_updates, ldict, (static, dynamic, video))
 
     @staticmethod
-    def _loss_fn_div_gains_flux(*args, **kwargs):
+    def _loss_fn_div_gains_fluxpar(*args, **kwargs):
         """
         Loss function for training a static and dynamic network
-        with gain corrections and learnable flux ration."""
+        with gain corrections and learnable flux ratio."""
         # Unpack states
         s_params, d_params, fd_params, ag_params, pg_params, \
             s_batch_stats, d_batch_stats, s_apply_fn, d_apply_fn, \
@@ -451,177 +559,34 @@ class Trainer(train_state.TrainState):
         loss = jnp.sum(jnp.array(list(ldict.values())))
         return loss, \
             (s_updates, d_updates, ldict, (static, dynamic, video, min_lcurve))
-    
-    @staticmethod
-    def _loss_fn_reg_gains(*args, **kwargs):
-        """Loss function for training a static and dynamic network
-        while finding the static flux density through regularization."""
-        # Unpack states
-        s_params, d_params, ag_params, pg_params, \
-            s_batch_stats, d_batch_stats, s_apply_fn, \
-                d_apply_fn, ag_apply_fn, pg_apply_fn = args
-        # Unpack kwargs
-        data = kwargs.get('data')
-        s_grid = kwargs.get('s_grid')
-        d_grid = kwargs.get('d_grid')
-        bl_indx = kwargs.get('bl_indx')
-        w_border = kwargs.get('w_border', 1e3)
-        w_flux = kwargs.get('w_flux', 5)
-        # Get static and dynamic videos and batch stats
-        static, s_updates  = s_apply_fn(
-            {'params': s_params, 'batch_stats': s_batch_stats},
-            s_grid, train=True, mutable=['batch_stats']
-            )
-        dynamic, d_updates = d_apply_fn(
-            {'params': d_params, 'batch_stats': d_batch_stats},
-            d_grid, train=True, mutable=['batch_stats']
-            )
-        # Initialize loss dictionary
-        ldict = {}
-        # Border regularization
-        loss_bd = w_border * Trainer._loss_border(static[..., 0])
-        loss_bd += w_border * Trainer._loss_border(dynamic[..., 0])
-        ldict['border'] = loss_bd
-        # Flux regularization
-        # Minimize persistent flux in dynamic component
-        loss_min_dyn = w_flux * Trainer._loss_min_dynamics(dynamic[..., 0])
-        ldict['min_dyn'] = loss_min_dyn
-        # Add the static and dynamic outputs
-        video = static + dynamic
-        # Separate polarimetric channels
-        videopol = {'I': ut.to_complex(video[...,0])}
-        # Apply gain corrections
-        gain_corr_data = Trainer._loss_gains(
-            data,
-            ag_apply_fn,
-            ag_params,
-            pg_apply_fn,
-            pg_params,
-            bl_indx
-            )
-        # Data product loss functions
-        for dtype in data:
-            chi2 = Trainer._loss_chi(
-                videopol['I'],
-                data[dtype],
-                dtype[:-1],
-                gain_corr_data=gain_corr_data
-                )
-            ldict[dtype] = chi2
-        # Total loss
-        loss = jnp.sum(jnp.array(list(ldict.values())))
-        return loss, (s_updates, d_updates, ldict, (static, dynamic, video))
+
+# Gain and Chi selection loss functions ----------------------------------------
 
     @staticmethod
-    def _loss_fn_init(*args, **kwargs):
-        """Loss function for initializing a general dynamic network."""
-        # Unpack states
-        params, batch_stats, apply_fn = args
-        # Unpack kwargs
-        grid = kwargs.get('grid')
-        init_vid = kwargs.get('init_vid')
-        # Get video and batch stats
-        video, updates = apply_fn(
-            {'params': params, 'batch_stats': batch_stats},
-            grid, train=True, mutable=['batch_stats']
-            )
-        # Separate polarimetric channels
-        polchan = ['I']
-        if video.shape[-1] == 4:
-            polchan = ['I', 'Ml', 'X']
-        if video.shape[-1] == 5:
-            polchan = ['I', 'Ml', 'X', 'Mc']
-        videopol = {
-            pol: video[..., 0] if pol == 'I'
-            else video[..., 1] if pol == 'Ml'
-            else jnp.arctan2(video[..., 2], video[..., 3]) * 0.5 if pol == 'X'
-            else video[..., 4]
-            for pol in polchan
-            }
-        initpol = {pol: init_vid[..., i] for i, pol in enumerate(polchan)}
-        # Initialize loss
-        loss = []
-        # Loss function for data products
-        for pol in polchan:
-            chi2 = jnp.mean(jnp.square(videopol[pol]
-                 - initpol[pol].reshape(videopol[pol].shape[0], -1))
-                 )
-            loss.append(chi2)
-        return jnp.sum(jnp.array(loss)), (updates, None, (video,))
+    def _loss_gains(
+        data,
+        ag_apply_fn,
+        ag_params,
+        pg_apply_fn,
+        pg_params,
+        bl_indx
+    ):
+        """Select which gain correction to apply based onthe data products
+        used for imaging."""
+        if any(x in data for x in ['ampI', 'logampI']):
+            dtype = 'ampI' if 'ampI' in data else 'logampI'
+            frames = jnp.arange(len(data[dtype]['target']), dtype=int)
+            visamp = data[dtype]['target'].copy()
+            agi, agj = ag_apply_fn({'params': ag_params}, bl_indx, frames)
+            return agi * agj * visamp
 
-    @staticmethod
-    def _loss_fn_init_pol(*args, **kwargs):
-        """Loss function for initializing a general dynamic network
-        for Stokes Q and U having Stokes I fixed."""
-        # Unpack states
-        params, batch_stats, apply_fn = args
-        # Unpack kwargs
-        grid = kwargs.get('grid')
-        init_vid_ml = kwargs.get('init_vid_ml')
-        init_vid_x = kwargs.get('init_vid_x')
-        # Get video and batch stats
-        video, updates = apply_fn(
-            {'params': params, 'batch_stats': batch_stats},
-            grid, train=True, mutable=['batch_stats']
-            )
-        # Separate polarimetric channels
-        polchan = ['Ml', 'X']
-        videopol = {
-            pol: video[..., 0] if pol == 'Ml'
-            else jnp.arctan2(video[..., 1], video[..., 2]) * 0.5
-            for _, pol in enumerate(polchan)
-            }
-        initpol = {
-            pol: init_vid_ml if pol == 'Ml'
-            else init_vid_x
-            for _, pol in enumerate(polchan)
-            }
-        # Initialize loss dictionary
-        loss = []
-        # Loss function for data products
-        for pol in polchan:
-            chi2 = jnp.mean(jnp.square(videopol[pol]
-                 - initpol[pol].reshape(videopol[pol].shape[0], -1))
-                 )
-            loss.append(chi2)
-        return jnp.sum(jnp.array(loss)), (updates, None, (video,))
-
-    @staticmethod
-    def _loss_fn_init_2d(*args, **kwargs):
-        """Loss function for initializing a general static network."""
-        # Unpack state
-        params, batch_stats, apply_fn = args
-        # Unpack kwargs
-        grid = kwargs.get('grid')
-        init_img = kwargs.get('init_img')
-        # Get video and batch stats
-        image, updates = apply_fn(
-            {'params': params, 'batch_stats': batch_stats},
-            grid, train=True, mutable=['batch_stats']
-            )
-        # Separate polarimetric channels
-        polchan = ['I']
-        if image.shape[-1] == 4:
-            polchan = ['I', 'Ml', 'X']
-        if image.shape[-1] == 5:
-            polchan = ['I', 'Ml', 'X', 'Mc']
-        imagepol = {
-            pol: image[..., 0] if pol == 'I'
-            else image[..., 1] if pol == 'Ml'
-            else jnp.arctan2(image[..., 2], image[..., 3]) * 0.5 if pol == 'X'
-            else image[..., 4]
-            for pol in polchan
-            }
-        initpol = {pol: init_img[..., i] for i, pol in enumerate(polchan)}
-        # Initialize loss
-        loss = []
-        # Loss function for data products
-        for pol in polchan:
-            chi2 = jnp.mean(jnp.square(imagepol[pol]
-                 - initpol[pol].flatten())
-                 )
-            loss.append(chi2)
-        return jnp.sum(jnp.array(loss)), (updates, None, (image,))
+        if 'visI' in data:
+            compvis = data['visI']['target'].copy()
+            frames = jnp.arange(len(data['visI']['target']), dtype=int)
+            agi, agj = ag_apply_fn({'params': ag_params}, bl_indx, frames)
+            pgi, pgj = pg_apply_fn({'params': pg_params}, bl_indx, frames)
+            gi, gj = agi * jnp.exp(1j * pgi), agj * jnp.exp(1j * pgj)
+            return gi * jnp.conj(gj) * compvis
 
     @staticmethod
     def _loss_chi(video, data, dtype, **kwargs):
@@ -647,15 +612,15 @@ class Trainer(train_state.TrainState):
                 vis = multi_nufft(video, uv['v'], uv['u'], pulses)
                 # Select loss based on dtype
                 if dtype == 'vis':
-                    return Trainer._loss_vis_nfft(vis[batch, uvind], data)
+                    return Trainer._loss_vis_3d_nfft(vis[batch, uvind], data)
                 if dtype == 'amp':
                     amp  = jnp.abs(vis[batch, uvind])
-                    return Trainer._loss_amp_nfft(amp[batch, uvind], data)
+                    return Trainer._loss_amp_3d_nfft(amp[batch, uvind], data)
                 if dtype == 'logamp':
                     eps = 1e-12
                     logamp = jnp.abs(vis[batch, uvind])
                     logamp = jnp.log(logamp + eps)
-                    return Trainer._loss_logamp_nfft(logamp, data)
+                    return Trainer._loss_logamp_3d_nfft(logamp, data)
                 if dtype == 'cphase':
                     expvis = vis[:, None, :, None]
                     exptria = tria[..., None]
@@ -666,7 +631,7 @@ class Trainer(train_state.TrainState):
                     ).squeeze(-1)
                     cphase = jnp.prod(whichvis, axis=2)
                     cphase = jnp.angle(cphase)
-                    return Trainer._loss_cphase_nfft(cphase, data)
+                    return Trainer._loss_cphase_3d_nfft(cphase, data)
                 if dtype == 'logcamp':
                     eps = 1e-12
                     expvis = vis[:, None, :, None]
@@ -681,25 +646,25 @@ class Trainer(train_state.TrainState):
                             + whichvis[..., 1] \
                             - whichvis[..., 2] \
                             - whichvis[..., 3]
-                    return Trainer._loss_logcamp_nfft(logcamp, data)
+                    return Trainer._loss_logcamp_3d_nfft(logcamp, data)
             else:
                 # Unpack gains
                 gain_corr_data = kwargs.get('gain_corr_data', None)
                 # Select loss based on dtype
                 if dtype == 'vis':
-                    return Trainer._loss_vis(video, data, gain_corr_data)
+                    return Trainer._loss_vis_3d(video, data, gain_corr_data)
                 if dtype == 'amp':
-                    return Trainer._loss_amp(video, data, gain_corr_data)
+                    return Trainer._loss_amp_3d(video, data, gain_corr_data)
                 if dtype == 'logamp':
-                    return Trainer._loss_logamp(video, data, gain_corr_data)
+                    return Trainer._loss_logamp_3d(video, data, gain_corr_data)
                 if dtype == 'cphase':
-                    return Trainer._loss_cphase(video, data)
+                    return Trainer._loss_cphase_3d(video, data)
                 if dtype == 'logcamp':
-                    return Trainer._loss_logcamp(video, data)
+                    return Trainer._loss_logcamp_3d(video, data)
                 if dtype == 'bs':
-                    return Trainer._loss_bs(video, data)
+                    return Trainer._loss_bs_3d(video, data)
                 if dtype == 'mbreve':
-                    return Trainer._loss_mbreve(video, data)
+                    return Trainer._loss_mbreve_3d(video, data)
         else:
             # Select loss based on dtype
             if dtype == 'vis':
@@ -715,26 +680,7 @@ class Trainer(train_state.TrainState):
             if dtype == 'bs':
                 return Trainer._loss_bs_2d(video, data)
 
-    @staticmethod
-    def _loss_vis(video, data, gvis):
-        gvis = data['target'] if gvis is None else gvis
-        vis = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video
-        ).squeeze(axis=-1)
-        return (
-            jnp.sum(
-                (jnp.abs(vis - gvis)/data['sigma'])**2 * data['padmask']
-            ) / (2*data['padmask'].sum())
-        )
-
-    @staticmethod
-    def _loss_vis_nfft(vis, data):
-        return (
-            jnp.sum(
-                (jnp.abs(vis - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / (2*data['padmask'].sum())
-        )
+# Data product loss functions --------------------------------------------------
 
     @staticmethod
     def _loss_vis_2d(image, data):
@@ -746,24 +692,24 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_amp(video, data, gamp):
-        gamp = data['target'] if gamp is None else gamp
-        amp = jnp.abs(
-            jax.lax.batch_matmul(data['A'][:, 0, ...], video).squeeze(axis=-1)
-        )
+    def _loss_vis_3d(video, data, gvis):
+        gvis = data['target'] if gvis is None else gvis
+        vis = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video
+        ).squeeze(axis=-1)
         return (
             jnp.sum(
-                (jnp.abs(amp - gamp)/data['sigma'])**2 * data['padmask']
-            ) / data['padmask'].sum()
+                (jnp.abs(vis - gvis)/data['sigma'])**2 * data['padmask']
+            ) / (2*data['padmask'].sum())
         )
 
     @staticmethod
-    def _loss_amp_nfft(amp, data):
+    def _loss_vis_3d_nfft(vis, data):
         return (
             jnp.sum(
-                (jnp.abs(amp - data['target'])/data['sigma'])**2
+                (jnp.abs(vis - data['target'])/data['sigma'])**2
                 * data['padmask']
-            ) / data['padmask'].sum()
+            ) / (2*data['padmask'].sum())
         )
 
     @staticmethod
@@ -778,7 +724,28 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_logamp(video, data, gamp):
+    def _loss_amp_3d(video, data, gamp):
+        gamp = data['target'] if gamp is None else gamp
+        amp = jnp.abs(
+            jax.lax.batch_matmul(data['A'][:, 0, ...], video).squeeze(axis=-1)
+        )
+        return (
+            jnp.sum(
+                (jnp.abs(amp - gamp)/data['sigma'])**2 * data['padmask']
+            ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_amp_3d_nfft(amp, data):
+        return (
+            jnp.sum(
+                (jnp.abs(amp - data['target'])/data['sigma'])**2
+                * data['padmask']
+            ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_logamp_3d(video, data, gamp):
         gamp = data['target'] if gamp is None else gamp
         data['sigma'] = data['sigma'] / gamp
         gamp = jnp.log(gamp + 1e-12)
@@ -793,7 +760,7 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_logamp_nfft(logamp, data):
+    def _loss_logamp_3d_nfft(logamp, data):
         data['sigma'] = data['sigma'] / data['target']
         data['target'] = jnp.log(data['target'] + 1e-12)
         return (
@@ -804,7 +771,23 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_logcamp(video, data):
+    def _loss_logcamp_2d(image, data):
+        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
+        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
+        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
+        vis4 = jax.lax.batch_matmul(data['A'][3, ...], image).squeeze(axis=-1)
+        logcamp = jnp.log(jnp.abs(vis1)) \
+                + jnp.log(jnp.abs(vis2)) \
+                - jnp.log(jnp.abs(vis3)) \
+                - jnp.log(jnp.abs(vis4))
+        return (
+            jnp.mean(
+                (jnp.abs(logcamp - data['target'])/data['sigma'])**2
+            )
+        )
+
+    @staticmethod
+    def _loss_logcamp_3d(video, data):
         vis1 = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video
         ).squeeze(axis=-1)
@@ -829,58 +812,10 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_logcamp_nfft(logcamp, data):
+    def _loss_logcamp_3d_nfft(logcamp, data):
         return (
             jnp.sum(
                 (jnp.abs(logcamp - data['target'])/data['sigma'])**2
-                * data['padmask']
-            ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_logcamp_2d(image, data):
-        vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
-        vis4 = jax.lax.batch_matmul(data['A'][3, ...], image).squeeze(axis=-1)
-        logcamp = jnp.log(jnp.abs(vis1)) \
-                + jnp.log(jnp.abs(vis2)) \
-                - jnp.log(jnp.abs(vis3)) \
-                - jnp.log(jnp.abs(vis4))
-        return (
-            jnp.mean(
-                (jnp.abs(logcamp - data['target'])/data['sigma'])**2
-            )
-        )
-
-    @staticmethod
-    def _loss_cphase(video, data):
-        data['target'] = jnp.deg2rad(data['target'])
-        data['sigma'] = jnp.deg2rad(data['sigma'])
-        vis1 = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video
-        ).squeeze(axis=-1)
-        vis2 = jax.lax.batch_matmul(
-            data['A'][:, 1, ...], video
-        ).squeeze(axis=-1)
-        vis3 = jax.lax.batch_matmul(
-            data['A'][:, 2, ...], video
-        ).squeeze(axis=-1)
-        cphase = jnp.angle(vis1 * vis2 * vis3)
-        return (
-            2 * jnp.sum(
-                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
-                * data['padmask']
-            ) / data['padmask'].sum()
-        )
-
-    @staticmethod
-    def _loss_cphase_nfft(cphase, data):
-        data['target'] = jnp.deg2rad(data['target'])
-        data['sigma'] = jnp.deg2rad(data['sigma'])
-        return (
-            2 * jnp.sum(
-                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
                 * data['padmask']
             ) / data['padmask'].sum()
         )
@@ -900,7 +835,9 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_bs(video, data):
+    def _loss_cphase_3d(video, data):
+        data['target'] = jnp.deg2rad(data['target'])
+        data['sigma'] = jnp.deg2rad(data['sigma'])
         vis1 = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video
         ).squeeze(axis=-1)
@@ -910,12 +847,23 @@ class Trainer(train_state.TrainState):
         vis3 = jax.lax.batch_matmul(
             data['A'][:, 2, ...], video
         ).squeeze(axis=-1)
-        bs = vis1 * vis2 * vis3
+        cphase = jnp.angle(vis1 * vis2 * vis3)
         return (
-            jnp.sum(
-                (jnp.abs(bs - data['target'])/data['sigma'])**2
+            2 * jnp.sum(
+                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
                 * data['padmask']
-            ) / (2*data['padmask'].sum())
+            ) / data['padmask'].sum()
+        )
+
+    @staticmethod
+    def _loss_cphase_3d_nfft(cphase, data):
+        data['target'] = jnp.deg2rad(data['target'])
+        data['sigma'] = jnp.deg2rad(data['sigma'])
+        return (
+            2 * jnp.sum(
+                ((1.0 - jnp.cos(cphase - data['target']))/data['sigma']**2)
+                * data['padmask']
+            ) / data['padmask'].sum()
         )
 
     @staticmethod
@@ -931,20 +879,20 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_mbreve(video, data):
-        visI = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video[0]
+    def _loss_bs_3d(video, data):
+        vis1 = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video
         ).squeeze(axis=-1)
-        visQ = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video[1]
+        vis2 = jax.lax.batch_matmul(
+            data['A'][:, 1, ...], video
         ).squeeze(axis=-1)
-        visU = jax.lax.batch_matmul(
-            data['A'][:, 0, ...], video[2]
+        vis3 = jax.lax.batch_matmul(
+            data['A'][:, 2, ...], video
         ).squeeze(axis=-1)
-        mbreve = (visQ + 1j * visU) / visI
+        bs = vis1 * vis2 * vis3
         return (
             jnp.sum(
-                (jnp.abs(mbreve - data['target'])/data['sigma'])**2
+                (jnp.abs(bs - data['target'])/data['sigma'])**2
                 * data['padmask']
             ) / (2*data['padmask'].sum())
         )
@@ -968,16 +916,32 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
-    def _loss_lcurve(lcurve, frames):
-        return jnp.mean(
-            (jnp.sum(jnp.real(frames), axis=1) - lcurve)**2
+    def _loss_mbreve_3d(video, data):
+        visI = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video[0]
+        ).squeeze(axis=-1)
+        visQ = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video[1]
+        ).squeeze(axis=-1)
+        visU = jax.lax.batch_matmul(
+            data['A'][:, 0, ...], video[2]
+        ).squeeze(axis=-1)
+        mbreve = (visQ + 1j * visU) / visI
+        return (
+            jnp.sum(
+                (jnp.abs(mbreve - data['target'])/data['sigma'])**2
+                * data['padmask']
+            ) / (2*data['padmask'].sum())
         )
 
+# Regularizer loss functions ---------------------------------------------------
+
     @staticmethod
-    def _loss_lcurve_2d(lcurve, image):
-        return jnp.mean(
-            (jnp.sum(jnp.real(image)) - jnp.median(lcurve))**2
-        )
+    def _loss_lcurve(lcurve, frames):
+        """Light-curve loss for a single image or a stack of frames."""
+        lcurve = jnp.atleast_1d(lcurve)
+        flux = jnp.sum(jnp.real(frames).reshape(lcurve.shape[0], -1), axis=1)
+        return jnp.sum((flux - lcurve)**2)
 
     @staticmethod
     def _loss_min_dynamics(dynamic):
@@ -1010,47 +974,4 @@ class Trainer(train_state.TrainState):
             jnp.abs(larr) * jnp.exp(-jnp.abs(iarr) / tau)
         )
 
-    @staticmethod
-    def _loss_fn_red(*args, **kwargs):
-        loss, (*updates, ldict, video) = Trainer._which_loss_fn(
-            *args, **kwargs
-        )
-        updates = [jax.tree_map(lambda x: jnp.mean(x, axis=0), updates[i])
-                    for i in range(len(updates))]
-        return loss, (updates, ldict, video)
 
-    @staticmethod
-    @jax.jit
-    def train_step(kwargs: OrderedDict) -> list[Array]:
-        """Training step.
-
-        Args:
-            kwargs: Training states and other variables required
-                for loss computations. Input as an OrderedDict since
-                @jax.jit can change the order in which kwargs are passed.
-
-        Returns:
-            Total loss, loss dictionary, sampled video, and training states
-        """
-        # Unpack states
-        keys = list(kwargs.keys())
-        states = [kwargs.pop(key) for key in keys if 'state' in key]
-        params = [s.params for s in states]
-        batch_stats = [s.batch_stats
-                       for s in states if s.batch_stats is not None]
-        apply_fn = [s.apply_fn for s in states]
-        argnums = tuple(range(len(states)))
-        args = params + batch_stats + apply_fn
-        # Get and apply gradients
-        (loss, (updates, ldict, video)), grads = jax.value_and_grad(
-            Trainer._loss_fn_red, argnums=argnums, has_aux=True
-        )(*args, **kwargs)
-        states = [state.apply_gradients(grads=grad)
-                  for state, grad in zip(states, grads)]
-        # Update batch stats if available
-        updatables = [s for s in states if s.batch_stats is not None]
-        nonupdatables = [s for s in states if s.batch_stats is None]
-        states = [s.replace(batch_stats=u['batch_stats'])
-                  for s, u in zip(updatables, updates)] \
-               + nonupdatables
-        return loss, ldict, *video, *states
