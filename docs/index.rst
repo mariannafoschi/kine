@@ -3,26 +3,41 @@ kine
 ====
 (pronounciation: */ˈkine/*)
 
-``kine`` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the time-dependent brightness distribution of the observed source through a fully unsupervised neural field, parametrized by a coordinate-based neural network.
+``kine`` is a Python package for video reconstruction of variable and sparse 
+radio-interferometric data, from horizon-scale supermassive black holes to 
+relativistic jets and more. It models the brightness distribution of the 
+observed source in space, time, and freqeuncy, through a fully unsupervised 
+neural field, parametrized by a coordinate-based neural network.
 
-Built on `JAX <https://jax.readthedocs.io/>`_ and `Flax <https://flax.readthedocs.io/>`_, ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. 
-It extends the `eht-imaging <https://github.com/achael/eht-imaging>`_ library for VLBI data handling.
+Built on `JAX <https://jax.readthedocs.io/>`_ and 
+`Flax <https://flax.readthedocs.io/>`_, ``kine`` leverages GPU-accelerated 
+automatic differentiation and JIT compilation for fast training. It extends the 
+`eht-imaging <https://github.com/achael/eht-imaging>`_ library for VLBI data 
+handling.
 
 Imaging modes
 -------------
 ``kine`` can be used for the following imaging tasks:
+
 - **Static imaging**: reconstruct an image of the source from a single VLBI observation.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
 - **Multi-epoch imaging**: reconstruct a video of the source's evolution across multiple observations spanning days to years.
+- **Multi-frequency imaging**: reconstruct the spectral dependence of the source across multiple frequencies.
 
 Available Features
 ------------------
 ``kine`` currently supports:
+
 - **Full polarimetric** video and image reconstruction (Stokes I, Q, U, V).
 - **Static + dynamic decomposition**: in dynamic mode, separate persistent and time-variable source structure.
 - **Simultaneous gain fitting**: amplitude and phase telescope gains optimized jointly with the image.
 - **GPU-based NUFFT**: Non-Uniform Fast Fourier Transform for direct visibility computation.
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
+
+Coming soon:
+~~~~~~~~~~~~
+- Multi-epoch + multi-frequency imaging
+- Scalability to large datasets
 
 
 

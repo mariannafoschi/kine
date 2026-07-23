@@ -224,7 +224,7 @@ def get_grid(
     return grid
 
 def _mjd_from_uvfits(path: str) -> float:
-    """Read the observation MJD from the metadata of a uvfits file.
+    """Read the observation MJD from the metadata of the file.
 
     Follows the same convention as ``ehtim``: the observation date is the
     smallest Julian date stored in the ``DATE`` random group parameter(s),
@@ -253,13 +253,13 @@ def _mjd_from_uvfits(path: str) -> float:
                 )
             return float(Time(header['DATE-OBS']).mjd)
 
-        # First DATE parameter (1-indexed, as in the PSCAL/PZERO keywords)
+        # First DATE parameter
         idx = parnames.index('DATE') + 1
         jds = (
             header.get(f'PSCAL{idx}', 1.) * np.asarray(data['DATE'], dtype='d')
             + header.get(f'PZERO{idx}', 0.)
         )
-        # Second DATE parameter (holding the fraction of a day), if present
+        # Second DATE parameter, if present
         if parnames.count('DATE') > 1:
             jds = jds + (
                 header.get(f'PSCAL{idx + 1}', 1.)
@@ -269,7 +269,7 @@ def _mjd_from_uvfits(path: str) -> float:
     return float(np.min(jds) - 2400000.5)
 
 def _mjd_from_filename(path: str, fmt: str) -> float:
-    """Extract the observation MJD from a file name.
+    """Extract the observation MJD from the file name.
 
     Args:
         path: Path to an observation file.
@@ -280,7 +280,6 @@ def _mjd_from_filename(path: str, fmt: str) -> float:
         Observation date in (fractional) mjd format.
     """
     from datetime import datetime
-
     from astropy.time import Time
 
     name = os.path.basename(path)
@@ -288,7 +287,7 @@ def _mjd_from_filename(path: str, fmt: str) -> float:
 
 def get_times_multiepoch(
         inpaths: str | list,
-        ymd: bool = False,
+        labels: bool = False,
         fmt: str | None = None,
         integer: bool = True
 ) -> Array | list:
@@ -296,23 +295,23 @@ def get_times_multiepoch(
 
     By default the times are read from the metadata of each uvfits file, so
     no assumption is made on how the files are named. Alternatively, a list
-    of already loaded ``ehtim.obsdata.Obsdata`` objects can be passed (their
-    ``mjd`` attribute is used), or the times can be parsed from the file
-    names by passing a format through `fmt`.
+    of Obsdata objects can be passed and their ``mjd`` attribute is used), 
+    otherwise the times can be parsed from the file names by passing a format 
+    through `fmt`.
 
     Args:
         inpaths: List of paths to the observation files (or a single path),
             or list of ``Obsdata`` objects.
-        ymd: If True, return times in YYYY-MM-DD format. If False,
+        labels: If True, return times in YYYY-MM-DD format. If False,
             return times in mjd format (required for training).
         fmt: Optional ``datetime.strptime`` format matching the whole file
             name (e.g. ``'obs_%Y_%m_%d.uvfits'``), used to parse the dates
             from the file names instead of reading them from the metadata.
         integer: If True, round the times down to integer mjd (one time
-            coordinate per day). Ignored if `ymd` is True.
+            coordinate per day). Ignored if `labels` is True.
 
     Returns:
-        Array of mjd times, or list of YYYY-MM-DD strings if `ymd` is True.
+        Array of mjd times, or list of YYYY-MM-DD strings if `labels` is True.
     """
     from astropy.time import Time
 
@@ -328,7 +327,7 @@ def get_times_multiepoch(
         else:
             mjds.append(_mjd_from_uvfits(path))
 
-    if ymd:
+    if labels:
         return [Time(mjd, format='mjd').iso[:10] for mjd in mjds]
     if integer:
         return jnp.array([int(mjd) for mjd in mjds])
