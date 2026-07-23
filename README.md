@@ -1,5 +1,3 @@
-# [ REPOSITORY UNDER CONSTRUCTION ]
-
 # kine
 
 `kine` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the brightness distribution of the observed source in space, time, and frequency through a fully unsupervised neural field, parametrized by a coordinate-based neural network.
@@ -36,8 +34,8 @@ Full documentation is available at (https://mariannafoschi.github.io/kine/) and 
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:
 
-1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Accepted (2026).
-2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" Under review. (2026).
+1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Accepted (2026).
+2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes A., Foschi M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine". Under review (2026).
 
 ## Developers
 
@@ -47,14 +45,14 @@ A full description of the imaging algorithm and extensive reconstruction validat
  - Antonio Fuentes (antoniofuentesfdez @ gmail . com)
  - Brandon Zhao (byzhao @ caltech . edu)
 
-If you would like support for using kine in your project or find a bug in the code please contact Marianna. If you would like support for installing the code on your machine please reach out to Brandon.
+If you would like support for using kine in your project or find an issue in the code please contact Marianna. If you would like support for installing the code on your machine please reach out to Brandon.
 
  ## Citation
 
  If you use `kine` in your publication, please cite:
 
-1. Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
-2. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
+1. Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Accepted (2026).
+2. Fuentes A., Foschi M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine". Under review (2026).
 
 
 
