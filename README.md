@@ -28,14 +28,7 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 Coming Soon:
 
 - Multi-epoch + multi-frequency imaging
-
 - Scalability to large datasets
-
-
-
-![kine video reconstruction from EHT-like data](docs/images/kine_eht.gif)
-
-
 
 ## Documentation
 
@@ -62,3 +55,8 @@ If you would like support for using kine in your project or find a bug in the co
 
 1. Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
 2. Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
+
+
+
+![kine video reconstruction from EHT-like data](docs/images/kine_eht.gif)
+
