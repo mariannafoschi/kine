@@ -2,9 +2,9 @@
 
 # kine
 
-`kine` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the time-dependent brightness distribution of the observed source through a fully unsupervised neural field, parametrized by a coordinate-based neural network.
+`kine` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the brightness distribution of the observed source in space, time, and frequency through a fully unsupervised neural field, parametrized by a coordinate-based neural network.
 
-Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthedocs.io/), ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It extends the [`eht-imaging`](https://github.com/achael/eht-imaging) library for VLBI data handling.
+Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthedocs.io/), ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It uses and complements the [`eht-imaging`](https://github.com/achael/eht-imaging) library for VLBI data handling.
 
 ### Imaging modes
 
@@ -12,6 +12,7 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 
 - **Static imaging**: reconstruct an image of the source from a single VLBI observation.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
+- **Multi-frequency imaging**: reconstruct the spectral dependence of the source across multiple frequencies.
 - **Multi-epoch imaging**: reconstruct a video of the source's evolution across multiple observations spanning days to years.
 
 ### Available features
@@ -24,36 +25,36 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 - **GPU-based NUFFT**: Non-Uniform Fast Fourier Transform for direct visibility computation.
 - **Multiple data products**: visibility amplitudes, closure phases, closure amplitudes, bispectra, and complex polarization ratios.
 
+Coming Soon:
+
+- Multi-epoch + multi-frequency imaging
+
+- Scalability to large datasets
 
 
-![kine video reconstruction from EHT-like data](docs/images/kine_EHT.gif)
+
+![kine video reconstruction from EHT-like data](docs/images/kine_eht.gif)
 
 
-
-## Installation
-
-`kine` relies on the `JAX` library for GPU computations and requires a careful installation of CUDA-related packages and others. For reference, a working conda environment can be found in [environment.yml](https://github.com/aefezeta/kine/tree/main/environment.yml). Detailed instructions on the installation will be provided in the near future.
-
-Assuming you have all required dependencies already installed, then install `kine` from the root directory with:
-
-    $ pip install -e .
 
 ## Documentation
 
-Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes quick start example scripts, hyperparameter description, user guide, and API documentation.
+Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes installation instructions, simple example scripts to get started, a complete user guide to imaging with kine, a parameter overview, and API documentation.
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:
 
-1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Under rev. (2026).
-2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" In prep. (2026).
+1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi, M., Zhao, B., Fuentes, A. et al. "Video reconstruction of variable interferometric observations with neural fields." Accepted (2026).
+2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes, A., Foschi, M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine" Under review. (2026).
 
 ## Developers
 
 `kine` is developed and maintained by:
 
- - Antonio Fuentes (antoniofuentesfdez @ gmail . com)
  - Marianna Foschi (foschimarianna @ gmail . com)
+ - Antonio Fuentes (antoniofuentesfdez @ gmail . com)
  - Brandon Zhao (byzhao @ caltech . edu)
+
+If you would like support for using kine in your project or find a bug in the code please contact Marianna. If you would like support for installing the code on your machine please reach out to Brandon.
 
  ## Citation
 
