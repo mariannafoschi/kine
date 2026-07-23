@@ -223,22 +223,116 @@ def get_grid(
         grid = grid.reshape(-1, 2)
     return grid
 
-def get_times_multiepoch(inpaths: str, ymd: bool = False) -> Array:
-    """Extract observation times from multiepoch file paths.
+def _mjd_from_uvfits(path: str) -> float:
+    """Read the observation MJD from the metadata of a uvfits file.
+
+    Follows the same convention as ``ehtim``: the observation date is the
+    smallest Julian date stored in the ``DATE`` random group parameter(s),
+    which are optionally rescaled by the ``PSCAL``/``PZERO`` keywords. Files
+    that are not in random-groups format fall back on the ``DATE-OBS``
+    header keyword.
 
     Args:
-        inpaths: 
-        ymd: If True, return times in YYYY-MM-DD format. If False,
-            return times in mjd format (required for training).
+        path: Path to a uvfits file.
 
     Returns:
-        Array of dates.
+        Observation date in (fractional) mjd format.
+    """
+    from astropy.io import fits
+    from astropy.time import Time
+
+    with fits.open(path) as hdulist:
+        header = hdulist['PRIMARY'].header
+        data = hdulist['PRIMARY'].data
+        parnames = list(getattr(data, 'parnames', []))
+        if 'DATE' not in parnames:
+            if 'DATE-OBS' not in header:
+                raise ValueError(
+                    f'No DATE parameter or DATE-OBS keyword found in {path}. '
+                    'Pass a file name format through `fmt` instead.'
+                )
+            return float(Time(header['DATE-OBS']).mjd)
+
+        # First DATE parameter (1-indexed, as in the PSCAL/PZERO keywords)
+        idx = parnames.index('DATE') + 1
+        jds = (
+            header.get(f'PSCAL{idx}', 1.) * np.asarray(data['DATE'], dtype='d')
+            + header.get(f'PZERO{idx}', 0.)
+        )
+        # Second DATE parameter (holding the fraction of a day), if present
+        if parnames.count('DATE') > 1:
+            jds = jds + (
+                header.get(f'PSCAL{idx + 1}', 1.)
+                * np.asarray(data['_DATE'], dtype='d')
+                + header.get(f'PZERO{idx + 1}', 0.)
+            )
+    return float(np.min(jds) - 2400000.5)
+
+def _mjd_from_filename(path: str, fmt: str) -> float:
+    """Extract the observation MJD from a file name.
+
+    Args:
+        path: Path to an observation file.
+        fmt: ``datetime.strptime`` format matching the whole file name,
+            e.g. ``'obs_%Y_%m_%d.uvfits'``.
+
+    Returns:
+        Observation date in (fractional) mjd format.
+    """
+    from datetime import datetime
+
+    from astropy.time import Time
+
+    name = os.path.basename(path)
+    return float(Time(datetime.strptime(name, fmt)).mjd)
+
+def get_times_multiepoch(
+        inpaths: str | list,
+        ymd: bool = False,
+        fmt: str | None = None,
+        integer: bool = True
+) -> Array | list:
+    """Extract observation times from multiepoch observations.
+
+    By default the times are read from the metadata of each uvfits file, so
+    no assumption is made on how the files are named. Alternatively, a list
+    of already loaded ``ehtim.obsdata.Obsdata`` objects can be passed (their
+    ``mjd`` attribute is used), or the times can be parsed from the file
+    names by passing a format through `fmt`.
+
+    Args:
+        inpaths: List of paths to the observation files (or a single path),
+            or list of ``Obsdata`` objects.
+        ymd: If True, return times in YYYY-MM-DD format. If False,
+            return times in mjd format (required for training).
+        fmt: Optional ``datetime.strptime`` format matching the whole file
+            name (e.g. ``'obs_%Y_%m_%d.uvfits'``), used to parse the dates
+            from the file names instead of reading them from the metadata.
+        integer: If True, round the times down to integer mjd (one time
+            coordinate per day). Ignored if `ymd` is True.
+
+    Returns:
+        Array of mjd times, or list of YYYY-MM-DD strings if `ymd` is True.
     """
     from astropy.time import Time
-    times = [os.path.basename(path).split('.')[-2] for path in inpaths]
+
+    if isinstance(inpaths, str):
+        inpaths = [inpaths]
+
+    mjds = []
+    for path in inpaths:
+        if fmt is not None:
+            mjds.append(_mjd_from_filename(path, fmt))
+        elif hasattr(path, 'mjd'):  # already loaded Obsdata object
+            mjds.append(float(path.mjd) + float(getattr(path, 'time', 0.)) / 24)
+        else:
+            mjds.append(_mjd_from_uvfits(path))
+
     if ymd:
-        return times
-    return jnp.array([int(Time(time).mjd) for time in times])
+        return [Time(mjd, format='mjd').iso[:10] for mjd in mjds]
+    if integer:
+        return jnp.array([int(mjd) for mjd in mjds])
+    return jnp.array(mjds)
 
 def get_static_flux(
         found_flux: float,

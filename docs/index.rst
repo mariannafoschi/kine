@@ -5,7 +5,8 @@ kine
 
 ``kine`` is a Python package for video reconstruction of variable and sparse radio-interferometric data, from horizon-scale supermassive black holes to relativistic jets and more. It models the time-dependent brightness distribution of the observed source through a fully unsupervised neural field, parametrized by a coordinate-based neural network.
 
-Built on `JAX <https://jax.readthedocs.io/>`_ and `Flax <https://flax.readthedocs.io/>`_, ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It extends the `eht-imaging <https://github.com/achael/eht-imaging>`_ library for VLBI data handling.
+Built on `JAX <https://jax.readthedocs.io/>`_ and `Flax <https://flax.readthedocs.io/>`_, ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. 
+It extends the `eht-imaging <https://github.com/achael/eht-imaging>`_ library for VLBI data handling.
 
 Imaging modes
 -------------
