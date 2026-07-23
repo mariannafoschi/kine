@@ -51,7 +51,7 @@ html_theme_options = {
     'repository_url': 'https://github.com/mariannafoschi/kine',
     'use_repository_button': True,
     'use_source_button': True,
-    'header_tabs': True,
+    'header_tabs': False,
 }
 
 # -- Options for EPUB output
