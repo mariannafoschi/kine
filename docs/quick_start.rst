@@ -1,38 +1,6 @@
-===============
-Getting Started
-===============
-
-Installation
-------------
-
-``kine`` relies on JAX for GPU computations and requires a careful installation of CUDA-related packages. A working conda environment specification is provided in ``environment.yml`` at the repository root.
-
-**Step 1: Create the conda environment**
-
-.. code-block:: bash
-
-   conda env create -f environment.yml
-   conda activate kine
-
-The environment includes all required dependencies:
-
-- **Core ML stack**: JAX (0.4.23), Flax (0.6.10), Optax (0.2.2)
-- **GPU support**: CUDA 11.8
-- **Radio astronomy**: ehtim (1.2.4), ehtplot (0.9.0)
-- **NUFFT** (optional): finufft (2.3.1), jax-finufft
-- **Scientific stack**: NumPy, SciPy, Astropy, Matplotlib
-
-**Step 2: Install kine**
-
-From the repository root directory:
-
-.. code-block:: bash
-
-   pip install -e .
-
-
+===========
 Quick Start
------------
+===========
 
 The fastest way to run ``kine`` is using the provided example scripts in the ``examples/`` folder.
 
