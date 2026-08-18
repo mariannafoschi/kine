@@ -25,10 +25,10 @@ Imaging modes
 
 - **Static imaging**: reconstruct an image of the source from a single VLBI 
   observation.
+- **Spectral imaging**: reconstruct the spectral dependence of the source 
+  across multiple frequencies.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI 
   observation.
-- **Multi-frequency imaging**: reconstruct the spectral dependence of the source 
-  across multiple frequencies.
 - **Multi-epoch imaging**: reconstruct a video of the source's evolution across 
   multiple observations spanning days to years.
 
@@ -48,7 +48,8 @@ Available Features
 
 **Coming soon:**
 
-- Multi-epoch + multi-frequency imaging
+- Multi-epoch + spectral imaging
+- Explicit modeling of the spectral dependence
 - Scalability to large datasets
 
 References
