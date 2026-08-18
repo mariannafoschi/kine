@@ -63,17 +63,17 @@ In general a ``kine`` imaging script includes the following blocks.
 
    1.  Imports and the asynchronous plotting worker
    2.  Command-line arguments, YAML hyperparameters, RNG seeds
-   3.  Loading and pre-processing the observation(s)
+   3.  Loading and pre-processing observation(s)
    4.  Coordinate grid
    5.  Data products
-   6.  The neural field, optimizer, and training state
+   6.  Neural field, optimizer, and training state
    7.  Initialization target and initialization training
-   8.  Gain fitting variables            (optional)
-   9.  The training loop
-   10. Saving and re-sampling the result
+   8.  Gain fitting variables (optional)
+   9.  Training loop
+   10. Saving and re-sampling
 
-Blocks 4--10 are repeated once per *step* in multi-step pipelines (see
-:ref:`dynamic-imaging`).
+If an imaging pipelines requires multiple imaging rounds, blocks 4--10 are 
+repeated once per round (see e.g. :ref:`dynamic-imaging`).
 
 
 1. Imports and the plotting worker
@@ -111,7 +111,9 @@ Blocks 4--10 are repeated once per *step* in multi-step pipelines (see
 The five ``kine`` modules are always imported under these short aliases. The
 last two lines start a background thread that draws diagnostic figures while
 training continues on the GPU: during the loop you push a dictionary of arrays
-onto ``q`` and the worker renders the PNG on the CPU without blocking.
+onto ``q`` and the worker renders the PNG on the CPU without blocking. The 
+asynchronous worker is not necessary if saving the images takes little time or 
+is not a bottleneck in the total runtime.
 
 Use ``vi.Video.async_plot`` when the reconstruction has a third coordinate
 (dynamic, multi-epoch, spectral) and ``vi.Image.async_plot`` for static imaging.
@@ -145,22 +147,26 @@ available on ``h`` without further wiring. This is what makes it easy to
 parameterize a script of your own.
 
 Seeding both JAX and NumPy makes a run reproducible: the same seed gives the
-same network initialization and therefore the same reconstruction.
+same network initialization and therefore the same reconstruction. Change the 
+seed to explore the (minimal) output variability due to different realizations 
+of the random initial parameters.
 
 
 3. Loading and pre-processing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:class:`kine.obsdata.Obsdata` extends ``ehtim``'s ``Obsdata``, so every ``ehtim``
-method remains available. The ``kine`` versions of the pre-processing methods
-return a ``kine`` object rather than an ``ehtim`` one, so they can be chained.
+Observations are loaded as :class:`kine.obsdata.Obsdata` objects and minimal 
+standard VLBI preprocessing can be applied. :class:`kine.obsdata.Obsdata` 
+extends ``ehtim``'s ``Obsdata``, so every ``ehtim`` method remains available. 
+The ``kine`` versions of the pre-processing methods return a ``kine`` object 
+rather than an ``ehtim`` one, so they can be chained.
 
 .. code-block:: python
 
    with ut.no_print():
        obs = ob.Obsdata.load_uvfits(par.obs)
 
-       obs = obs.avg_coherent(h.tavg)          # coherent time averaging (s)
+       obs = obs.avg_coherent(h.tavg)           # coherent time averaging (s)
        obs = obs.add_fractional_noise(h.syserr) # systematic noise budget
        obs = obs.flag_UT_range(                 # keep/drop a UT window
            UT_start_hour=h.tflag['t0'],
@@ -187,7 +193,7 @@ verbose output.
        ``tavg: 0`` to leave the data as they are.
    * - :meth:`~kine.obsdata.Obsdata.add_fractional_noise`
      - Adds a fraction of the visibility amplitude to the uncertainties, as a
-       systematic noise budget.
+       systematic noise budget. 
    * - :meth:`~kine.obsdata.Obsdata.flag_UT_range`
      - Keeps (``output='kept'``) or removes (``output='flagged'``) data in a UT
        window. Used to trim the edges of a track, or to remove a scan in which a
@@ -198,31 +204,35 @@ verbose output.
    * - :meth:`~kine.obsdata.Obsdata.flag_bl`
      - Removes a named baseline.
    * - :meth:`~kine.obsdata.Obsdata.flag_uvdist`
-     - Removes data outside a range of :math:`uv`-distance.
+     - Removes data outside a range of uv-distance.
    * - :meth:`~kine.obsdata.Obsdata.flag_empty`
      - Drops antennas left in the array table with no measurements. Worth
        calling after any other flagging.
    * - :meth:`~kine.obsdata.Obsdata.norm_to_max`
      - Divides all visibilities and sigmas by the shortest-baseline flux
        density, so that fluxes are expressed in units of the peak zero-baseline
-       flux. **Required for the static + dynamic decomposition**, which assumes
+       flux. Required for the static + dynamic decomposition, which assumes
        normalized components.
 
-**Splitting into snapshots**
+For more details on data preprocessing see `eht-imaging's documentation 
+<https://achael.github.io/eht-imaging/obsdata.html>`_.
 
-Dynamic imaging needs the data grouped by time:
+Splitting into snapshots
+........................
+
+Dynamic imaging of a single observation requires the data to be grouped by time:
 
 .. code-block:: python
 
    obslist = obs.split_obs(min_bl=h.min_bl)
 
 :meth:`~kine.obsdata.Obsdata.split_obs` returns a list of ``Obsdata``, one per
-snapshot, and each snapshot becomes one video frame. ``min_bl`` drops snapshots
-formed by fewer than ``min_bl`` antennas, i.e. fewer than
-``min_bl*(min_bl-1)/2`` visibilities — sparse snapshots contribute little and
-inflate the padding described in step 5. The optional ``group`` argument merges
-each snapshot with its ``group`` neighbours on either side, which raises the
-per-frame :math:`uv`-coverage at the cost of temporal resolution.
+snapshot, and each snapshot is matched to a video frame. ``min_bl`` drops 
+snapshots formed by fewer than ``min_bl`` antennas. This parameters should be 
+set to 3 when using closure phase or 4 when using closure quantities. The 
+optional ``group`` argument merges each snapshot with its ``group`` neighbours 
+on either side, which raises the per-frame :math:`uv`-coverage at the cost of 
+temporal resolution.
 
 **Total flux**
 
@@ -851,8 +861,8 @@ resolution. The same applies to time: passing a regular ``times`` array to
 observations.
 
 
-Adapting the structure
-----------------------
+Imaging scenarios
+-----------------
 
 The following sections describe how the ten blocks change for each imaging
 scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
