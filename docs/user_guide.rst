@@ -632,9 +632,7 @@ Station gains can be fitted jointly with the image, as learnable parameters:
    sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(obslist, h.gains_prior)
 
    ag_schedule = ut.Schedule(5e-5, 1e-3, h.niter)
-   ag_network = mo.AmplitudeGains(
-       nsites=nsites, ntimes=ntimes, lower=lower, upper=upper
-   )
+   ag_network = mo.AmplitudeGains(nsites=nsites, ntimes=ntimes, lower=lower, upper=upper)
    ag_params = ag_network.init(
        rkey, jnp.ones((ntimes, nvis, 2), dtype=int), jnp.ones((ntimes), dtype=int)
    )
@@ -662,21 +660,19 @@ gain per station and per frame, initialized to 1 and clipped to its allowed
 range at every step; :class:`kine.model.PhaseGains` holds one phase per station
 and per frame, initialized to 0 and wrapped to :math:`[-\pi, \pi]`.
 
-Gains are applied to the *data*, not to the model. Amplitude gains are applied
+Gains are applied to the data, not to the model. Amplitude gains are applied
 when ``ampI`` or ``logampI`` is among the data products, and amplitude and phase
-gains together when ``visI`` is. Closure quantities are gain-invariant by
-construction and are left untouched, so a run using only closure products
-carries the gain networks along without them affecting the fit.
+gains together when ``visI`` is. 
 
 .. note::
 
    Simultaneous gain fitting is currently wired into the static + dynamic
-   decomposition path only (block 9, the ``s_grid`` branches). The 
-   single-network and NUFFT paths ignore gain states.
+   decomposition path only. The single-network and NUFFT paths ignore gain 
+   fitting.
 
 
 9. Training loop
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -711,7 +707,7 @@ function that evaluates the network on the grid, computes the loss, takes the
 gradient with respect to every training state passed in, applies the update, and
 refreshes the batch-norm statistics.
 
-.. important::
+.. note::
 
    ``tr.NPIX`` is a module-level global that must be set to the current ``npix``
    before training. It is needed by the NUFFT and by the border regularizer, and
@@ -819,12 +815,12 @@ regularizers of the branch in use.
 Weights are overridden by passing them into the dict, e.g. ``w_border=0``.
 
 
-10. Saving and re-sampling
+10. Saving and resampling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because the trained network is continuous, the final result is usually not the
-array produced by the last training iteration but a fresh evaluation on a finer
-grid:
+Because the trained network is continuous, the final result is not necessarily 
+the array produced by the last training iteration but it can be a new evaluation 
+of the trained network on a finer grid:
 
 .. code-block:: python
 
@@ -837,6 +833,15 @@ grid:
    video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
    video.from_state(state, grid_out)
    video.save_h5('./output.h5')
+
+Re-sampling on a finer grid is genuinely cheap — it is one forward pass — so the
+training resolution can be kept modest while the output is written at higher
+resolution. The same applies to time: passing a regular ``times`` array to
+``get_grid`` produces evenly spaced frames from irregularly sampled
+observations.
+
+Plotting, Saivng and Resampling methods
+.......................................
 
 .. list-table::
    :header-rows: 1
@@ -851,22 +856,15 @@ grid:
    * - :meth:`~kine.video.Video.from_states`
      - Evaluate and recombine the static and dynamic networks.
    * - :meth:`~kine.video.Video.plot`
-     - Diagnostic figure: frames, loss curves, and polarization panels when
-       present. ``scale='log'`` with ``drange`` for high dynamic range.
+     - Diagnostic figure: frames, loss, and polarization panels if present.
    * - :meth:`~kine.video.Video.plot_gif`
-     - Animated GIF of the video.
+     - Saves video as GIF.
    * - :meth:`~kine.video.Video.save_h5`
-     - HDF5 video, readable by ``ehtim``.
-   * - :meth:`~kine.video.Video.save_fits` / :meth:`~kine.video.Image.save_fits`
-     - FITS image.
+     - saves video in HDF5 format.
+   * - :meth:`~kine.video.Video.save_fits`
+     - saves image in FITS format.
    * - :meth:`~kine.video.Video.save_gains`
-     - Text file of fitted amplitude gains.
-
-Re-sampling on a finer grid is genuinely cheap — it is one forward pass — so the
-training resolution can be kept modest while the output is written at higher
-resolution. The same applies to time: passing a regular ``times`` array to
-``get_grid`` produces evenly spaced frames from irregularly sampled
-observations.
+     - Saves fotted gains in a TXT file.
 
 
 Imaging scenarios
@@ -878,7 +876,7 @@ scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 26 26 26
+   :widths: 26 26 24 24
 
    * - Scenario
      - Script
@@ -903,7 +901,7 @@ scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
    * - :ref:`polarimetric-imaging`
      - ``example_dynamic_imaging_pol.py``
      - time (within a track)
-     - 1 (3D, polarization only)
+     - 1 (3D, lin. pol. only)
 
 
 .. _static-imaging:
