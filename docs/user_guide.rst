@@ -3,34 +3,31 @@ User Guide
 ==========
 
 This guide walks through the structure of a typical ``kine`` imaging script,
-explaining what each block of code does, which options are available at each
-step, and how to adapt the general structure to a specific imaging scenario.
-
-The first part, :ref:`anatomy`, describes the skeleton that *every* ``kine``
-script follows. The second part, starting at :ref:`static-imaging`, goes through
-the five imaging scenarios shipped in ``scripts/`` and describes what changes in
-each block.
+explaining in detail the available options and how to adapt the general 
+structure to a specific imaging scenario. 
 
 For the mathematical background of the algorithm and its validation see the
-reference papers listed in :doc:`index`. For a compact table of every YAML
-keyword see :doc:`parameters`; for function signatures see :doc:`api/index`.
+reference papers listed in :doc:`index`, for a list and description of the 
+parameters to be used in the YAML file see :doc:`parameters`, for function 
+signatures see :doc:`api/index`.
 
 
-What ``kine`` does
-------------------
+Overview
+--------
 
 ``kine`` models the polarized brightness distribution of the source as a
 *neural field*: a coordinate-based multi-layer perceptron (MLP), with weights
-:math:`W`, that maps a sky position and a time to the polarimetric quantities
-at that point,
+:math:`W`, that maps space, time, and frequency coordinates to the polarimetric 
+quantities at that point,
 
 .. math::
 
-   (\hat I, \hat m_\ell, \hat \chi, \hat m_c)_W (x, y, t)
-   = \mathrm{MLP}_W(x, y, t).
+   [I, m_\ell, \chi, m_c]_W (x, y, t, f)
+   = \mathrm{MLP}_W(x, y, t, f).
 
-The network is evaluated on a grid of coordinates to produce a video, the video
-is Fourier transformed to predict interferometric data products, and the weights
+The network is evaluated on a grid of coordinates to produce an image, video, or 
+spectral cube. A spatial Fourier transform is applied to the output of the 
+network to predict interferometric data products, and the weights of the network
 are updated by gradient descent to minimize the :math:`\chi^2` between predicted
 and observed data products,
 
@@ -42,29 +39,25 @@ and observed data products,
      \right),
 
 where :math:`D` runs over the chosen data products, :math:`j` over observed
-times and :math:`i` over the data at each time. There is no explicit image
-prior: regularization comes from the spectral bias of the MLP, which naturally
-favours smooth structure in space and time, plus a small number of physical
-constraints (total flux, frame border, flux decomposition) described below.
+times and :math:`i` over the data at each time. 
 
+There is no explicit image prior: regularization comes from the spectral bias of 
+the MLP, which favours smooth structure along all of the input coordinates.
 Because the representation is continuous, the trained network can be re-sampled
-at **any** coordinate — a finer pixel grid, or times at which no observation
+at any coordinate, such as a finer pixel grid, or times at which no observation
 exists.
 
 .. note::
 
-   The same machinery works whether the third coordinate is *time* (dynamic and
-   multi-epoch imaging), *frequency* (spectral imaging), or absent altogether
-   (static imaging). This is why all the scripts look so similar.
+   The same machinery works whether the third coordinate is time (dynamic and
+   multi-epoch imaging), frequency (spectral imaging), or absent altogether
+   (static imaging).
 
 
-.. _anatomy:
+Code structure
+--------------
 
-The anatomy of a ``kine`` script
-================================
-
-Every example in ``scripts/`` is a flat, top-to-bottom script built from the
-same ten blocks, in this order:
+In general a ``kine`` imaging script includes the following blocks. 
 
 .. code-block:: text
 
@@ -84,7 +77,7 @@ Blocks 4--10 are repeated once per *step* in multi-step pipelines (see
 
 
 1. Imports and the plotting worker
-----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -125,7 +118,7 @@ Use ``vi.Video.async_plot`` when the reconstruction has a third coordinate
 
 
 2. Arguments, hyperparameters, seeds
-------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -156,7 +149,7 @@ same network initialization and therefore the same reconstruction.
 
 
 3. Loading and pre-processing
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :class:`kine.obsdata.Obsdata` extends ``ehtim``'s ``Obsdata``, so every ``ehtim``
 method remains available. The ``kine`` versions of the pre-processing methods
@@ -278,7 +271,7 @@ frequency and bandwidth untouched, which is what spectral imaging needs.
 
 
 4. Coordinate grid
-------------------
+~~~~~~~~~~~~~~~~~~
 
 The network is trained on an explicit grid of input coordinates built by
 :func:`kine.utils.get_grid`:
@@ -324,7 +317,7 @@ Finally, the number of output channels is set from the requested data products:
 
 
 5. Data products
-----------------
+~~~~~~~~~~~~~~~~
 
 ``kine`` never fits an image to an image: it fits the observed interferometric
 data products. Which ones to use is set by ``data_prod`` in the YAML file, as a
@@ -445,7 +438,7 @@ this (purely CPU-side) preparation.
 
 
 6. The neural field, optimizer, and training state
---------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -545,7 +538,7 @@ smooth exponential alternative, used through ``sched.exponential``.
 
 
 7. Initialization
------------------
+~~~~~~~~~~~~~~~~~
 
 Before fitting any data, the network is trained to reproduce a simple image.
 This is a plain pixel-to-pixel regression,
@@ -610,7 +603,7 @@ queue to drain before the script moves on.
 
 
 8. Gain fitting
----------------
+~~~~~~~~~~~~~~~
 
 Station gains can be fitted jointly with the image, as learnable parameters:
 
@@ -665,7 +658,7 @@ carries the gain networks along without them affecting the fit.
 
 
 9. The training loop
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -809,7 +802,7 @@ Weights are overridden by passing them into the dict, e.g. ``w_border=0``.
 
 
 10. Saving and re-sampling
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Because the trained network is continuous, the final result is usually not the
 array produced by the last training iteration but a fresh evaluation on a finer
@@ -859,7 +852,7 @@ observations.
 
 
 Adapting the structure
-======================
+----------------------
 
 The following sections describe how the ten blocks change for each imaging
 scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
@@ -898,7 +891,7 @@ scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
 .. _static-imaging:
 
 Static imaging
---------------
+~~~~~~~~~~~~~~
 
 Reconstruct a single image from a single observation. This is the simplest
 scenario and the best starting point.
@@ -953,7 +946,7 @@ polarization simultaneously; adding ``visV`` raises it to 5.
 .. _spectral-imaging:
 
 Spectral imaging
-----------------
+~~~~~~~~~~~~~~~~
 
 Reconstruct the frequency dependence of the source from several observations at
 different frequencies. Frequency plays exactly the role that time plays in
@@ -1015,7 +1008,7 @@ multi-epoch axes, are planned developments.
 .. _multiepoch-imaging:
 
 Multi-epoch imaging
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 Reconstruct the evolution of a source across many separate observations,
 spanning days to decades — for example a monitoring programme such as MOJAVE.
@@ -1079,7 +1072,7 @@ discard.
 .. _dynamic-imaging:
 
 Dynamic imaging
----------------
+~~~~~~~~~~~~~~~
 
 Reconstruct a video from a *single* observation of a source that varies within
 the track, such as Sgr A* with the EHT. Here the instantaneous coverage is far
@@ -1209,7 +1202,7 @@ that path.
 .. _polarimetric-imaging:
 
 Dynamic polarimetric imaging
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Reconstruct the linear polarization of a variable source, with Stokes I held
 fixed at a previously reconstructed video. Splitting the problem this way is
@@ -1313,7 +1306,7 @@ already been solved for.
 
 
 Practical notes
-===============
+~~~~~~~~~~~~~~~
 
 **Compilation.** ``train_step`` is JIT-compiled, so the first iteration of each
 loop is slow while XLA compiles it. Changing the shape of anything in the
