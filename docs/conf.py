@@ -23,6 +23,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.linkcode',
     'sphinx.ext.napoleon',
+    "sphinx_copybutton",
     'sphinx_design',
     'nbsphinx',
 ]

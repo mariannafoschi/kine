@@ -123,7 +123,7 @@ fov = h.fov_uas * eh.RADPERUAS
 
 # Set time coordinates
 times = ut.get_times_multiepoch(obspath)
-dates = ut.get_times_multiepoch(obspath, ymd=True)
+dates = ut.get_times_multiepoch(obspath, labels=True)
 ntimes = len(obslist)
 
 # Set 3D coordinate grids

@@ -8,6 +8,13 @@ together with their world-coordinate metadata, exposes constructors for
 building a video from a Flax training state or from a saved file, and
 provides plotting and export routines.
 
+The :class:`~kine.video.Image` class is its time-independent counterpart,
+used for static imaging. It offers the same construction, plotting and
+export interface for a single frame.
+
+Video
+-----
+
 **Construction from training output**
 
 .. autosummary::
@@ -52,6 +59,53 @@ provides plotting and export routines.
    ~kine.video.Video.save_h5
 
 .. autoclass:: kine.video.Video
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Image
+-----
+
+**Construction from training output**
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   ~kine.video.Image
+   ~kine.video.Image.from_state
+   ~kine.video.Image.from_image
+   ~kine.video.Image.from_fits
+
+**Adding ancillary components**
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   ~kine.video.Image.add_tophat
+   ~kine.video.Image.add_image_i
+   ~kine.video.Image.add_constant_linpol
+   ~kine.video.Image.add_constant_circpol
+
+**Plotting**
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   ~kine.video.Image.plot
+   ~kine.video.Image.async_plot
+
+**Saving and exporting**
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   ~kine.video.Image.save_fits
+
+.. autoclass:: kine.video.Image
    :members:
    :undoc-members:
    :show-inheritance:
