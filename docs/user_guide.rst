@@ -179,7 +179,8 @@ rather than an ``ehtim`` one, so they can be chained.
 :func:`kine.utils.no_print` is a context manager that silences ``ehtim``'s
 verbose output.
 
-**Available pre-processing methods**
+Available pre-processing
+........................
 
 .. list-table::
    :header-rows: 1
@@ -234,7 +235,8 @@ optional ``group`` argument merges each snapshot with its ``group`` neighbours
 on either side, which raises the per-frame :math:`uv`-coverage at the cost of 
 temporal resolution.
 
-**Total flux**
+Total flux
+..........
 
 Closure quantities carry no information about the total flux of a frame, so when
 imaging with them the total flux must be supplied as a constraint:
@@ -255,11 +257,11 @@ light curve is instead built epoch by epoch:
 
    lcurve = jnp.array([o.get_zbl() for o in obslist])
 
-**Several observations**
+Imaging multiple observations
+.............................
 
-When the input is a directory, each file is loaded in a loop and the metadata
-are matched to a reference observation, because ``ehtim`` refuses to combine
-observations whose headers disagree:
+When the input is more than one observation, each file is loaded in a loop and 
+the metadata are matched to a reference observation:
 
 .. code-block:: python
 
@@ -277,7 +279,7 @@ observations whose headers disagree:
 :meth:`~kine.obsdata.Obsdata.fix_multiepoch` copies source name, coordinates,
 frequency, bandwidth, time type and polarization representation from the
 reference. :meth:`~kine.obsdata.Obsdata.fix_multifreq` does the same but leaves
-frequency and bandwidth untouched, which is what spectral imaging needs.
+frequency and bandwidth untouched.
 
 
 4. Coordinate grid
