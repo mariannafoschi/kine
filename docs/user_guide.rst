@@ -63,7 +63,7 @@ In general a ``kine`` imaging script includes the following blocks.
 
    1.  Imports and the asynchronous plotting worker
    2.  Command-line arguments, YAML hyperparameters, RNG seeds
-   3.  Loading and pre-processing observation(s)
+   3.  Loading and preprocessing observation(s)
    4.  Coordinate grid
    5.  Data products
    6.  Neural field, optimizer, and training state
@@ -152,14 +152,8 @@ seed to explore the (minimal) output variability due to different realizations
 of the random initial parameters.
 
 
-3. Loading and pre-processing
+3. Loading and preprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Observations are loaded as :class:`kine.obsdata.Obsdata` objects and minimal 
-standard VLBI preprocessing can be applied. :class:`kine.obsdata.Obsdata` 
-extends ``ehtim``'s ``Obsdata``, so every ``ehtim`` method remains available. 
-The ``kine`` versions of the pre-processing methods return a ``kine`` object 
-rather than an ``ehtim`` one, so they can be chained.
 
 .. code-block:: python
 
@@ -175,12 +169,17 @@ rather than an ``ehtim`` one, so they can be chained.
        )
        obs = obs.flag_empty()                   # drop antennas with no data
        obs = obs.norm_to_max()                  # normalize amplitudes
-
+       
+Observations are loaded as :class:`kine.obsdata.Obsdata` objects and minimal 
+standard VLBI preprocessing can be applied. :class:`kine.obsdata.Obsdata` 
+extends ``ehtim``'s ``Obsdata``, so every ``ehtim`` method remains available. 
+The ``kine`` versions of the preprocessing methods return a ``kine`` object 
+rather than an ``ehtim`` one, so they can be chained.
 :func:`kine.utils.no_print` is a context manager that silences ``ehtim``'s
 verbose output.
 
-Available pre-processing
-........................
+Available preprocessing
+.......................
 
 .. list-table::
    :header-rows: 1
@@ -285,9 +284,6 @@ frequency and bandwidth untouched.
 4. Coordinate grid
 ~~~~~~~~~~~~~~~~~~
 
-The network is trained on an explicit grid of input coordinates built by
-:func:`kine.utils.get_grid`:
-
 .. code-block:: python
 
    fov = h.fov_uas * eh.RADPERUAS
@@ -299,27 +295,34 @@ The network is trained on an explicit grid of input coordinates built by
    times = ut.list_to_jaxarr([o.tstart for o in obslist])
    grid = ut.get_grid(h.npix, h.npix, len(obslist), times=times)
 
-The 2D grid has shape ``(npix*npix, 2)`` with columns ``(x, y)``; the 3D grid
-has shape ``(nt, npix*npix, 3)`` with columns ``(t, x, y)``. **The column order
-matters**, because the positional encoding degrees are given per column.
+The network is trained on an explicit grid of input coordinates built by
+:func:`kine.utils.get_grid`. The 2D grid has shape ``(npix*npix, 2)`` with 
+columns ``(x, y)``; the 3D grid has shape ``(nt, npix*npix, 3)`` with columns 
+``(t, x, y)`` (or ``(f, x, y)``).  The column order matters, because the 
+positional encoding degrees are given per column.
 
 Spatial coordinates are normalized to :math:`[0, 1]`. Time coordinates are
-normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` (default 10) is a time
-dilation factor: it sets the scale of the time axis relative to the spatial
-axes, and therefore how readily the network varies its output along time
-compared to space.
+normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` (default 10) is a 
+factor that sets the scale of the time axis relative to the spatial axes, and 
+therefore how readily the network varies its output along time compared to 
+space.
 
 Passing ``times=`` places the time coordinates at the real (generally irregular)
 observation times, rescaled to that interval. Passing only ``nt`` places them
 regularly. Training uses the real times; re-sampling the trained network at
 regular times is what produces a temporally uniform output video.
 
+For spectral imaging the time axis is replaced by the freqeuncy axis.
+
 ``fov`` is the field of view in radians (``eh.RADPERUAS`` converts from
-microarcseconds) and ``npix`` the number of pixels per side, so the pixel size is
-``fov/npix``. Both enter the reconstruction only through the grid and through
+microarcseconds) and ``npix`` the number of pixels per side, so the pixel size 
+is ``fov/npix``. Both enter the reconstruction only through the grid and through
 the image metadata created in the next block.
 
 Finally, the number of output channels is set from the requested data products:
+1 for total intensity only, 3 when adding linear polarization (the EVPA is 
+described by its x and y decomposition), and 4 when including circular 
+polarization.
 
 .. code-block:: python
 
@@ -331,10 +334,10 @@ Finally, the number of output channels is set from the requested data products:
 5. Data products
 ~~~~~~~~~~~~~~~~
 
-``kine`` never fits an image to an image: it fits the observed interferometric
-data products. Which ones to use is set by ``data_prod`` in the YAML file, as a
-list of string codes. Each code is a product name followed by a single letter
-naming the Stokes parameter.
+The data producs used in the data fit are set by ``data_prod`` in the YAML file, 
+as a list of string codes. Each code is a product name followed by a single 
+letter naming the Stokes parameter. 
+The loss terms from all listed data products are summed with equal weight.
 
 .. list-table::
    :header-rows: 1
@@ -353,14 +356,14 @@ naming the Stokes parameter.
    * - ``logampI``
      - :math:`\log|V_{AB}|`
      - As above, with better-behaved gradients over a wide dynamic range.
-   * - ``cphaseI``
-     - Closure phases :math:`\arg(V_{AB}V_{BC}V_{CA})`
-     - Invariant under station-based phase errors. Carry no information on the
-       absolute source position, so a reconstruction may drift within the frame.
    * - ``logcampI``
      - Log closure amplitudes
      - Invariant under station-based amplitude errors. Carry no information on
        the total flux, hence the light-curve constraint.
+   * - ``cphaseI``
+     - Closure phases :math:`\arg(V_{AB}V_{BC}V_{CA})`
+     - Invariant under station-based phase errors. Carry no information on the
+       absolute source position, so a reconstruction may drift within the frame.
    * - ``bsI``
      - Bispectra :math:`V_{AB}V_{BC}V_{CA}`
      - Alternative to closure phases, retaining amplitude information.
@@ -368,9 +371,10 @@ naming the Stokes parameter.
      - :math:`\breve m = (\tilde Q + i\tilde U)/\tilde I`
      - Complex polarization ratio, for polarimetric imaging.
 
-The loss terms from all listed data products are summed with equal weight.
+DFT vs NNFT
+~~~~~~~~~~~
 
-**Direct Fourier transform**
+**DFT**
 
 .. code-block:: python
 
@@ -386,14 +390,17 @@ The loss terms from all listed data products are summed with equal weight.
            'padmask': padmask
        }
 
-``improxy`` is an empty ``ehtim`` image that carries only metadata (pixel size,
-field of view, source coordinates); it tells ``ehtim`` how to build the Fourier
-operators, and is never itself reconstructed.
+When using the Direct Fourier Transform (DFT), the FT is computed by matrix 
+multiplication and the matrices are precomputed once at the beginning of the 
+training. 
+
+``improxy`` is an empty ``ehtim`` image that carries metadata (pixel size,
+field of view, source coordinates) used to build the Fourier operators.
 
 :meth:`~kine.obsdata.Obsdata.get_data` returns ``(target, sigma, A)`` for a
 single ``Obsdata`` and ``(target, sigma, A, padmask)`` for a list of snapshots.
-``A`` holds the DFT matrices that map image pixels to visibilities — one matrix
-for a direct product, three for closure phases and bispectra, four for closure
+``A`` holds the DFT matrices that map image pixels to visibilities — 1 matrix
+for a direct product, 3 for closure phases and bispectra, 4 for closure
 amplitudes. Because snapshots contain different numbers of visibilities, the
 arrays are padded to a common length and ``padmask`` marks the real entries, so
 that padding contributes nothing to the loss.
@@ -428,29 +435,27 @@ that padding contributes nothing to the loss.
    tria  = ut.pad(tria).astype('int32')
    quad  = ut.pad(quad).astype('int32')
 
-Here no DFT matrix is built. Instead the scaled :math:`uv` points, the pulse
-factors, and the index arrays that assemble baselines into triangles and
-quadrangles are precomputed, and the visibilities are evaluated at run time with
-a non-uniform FFT (``jax-finufft``). ``ut.pad`` pads the per-epoch lists into
-rectangular JAX arrays; the ``ThreadPoolExecutor`` is only there to speed up
-this (purely CPU-side) preparation.
+Here no DFT matrix is built. Instead the scaled uv points, the pulse factors, 
+and the index arrays that assemble baselines into triangles and quadrangles are 
+precomputed, and the visibilities are evaluated at run time with a non-uniform 
+FFT (``jax-finufft``). ``ut.pad`` pads the per-epoch lists into rectangular JAX 
+arrays; the ``ThreadPoolExecutor`` is only there to speed up this (purely 
+CPU-side) preparation.
 
-.. admonition:: Which one to use
-   :class: tip
+.. note::
 
-   **Prefer the direct DFT.** Switch to the NUFFT only when memory becomes a
-   problem, which happens when there are many data points and many epochs: the
-   DFT stores a dense ``(nvis × npix²)`` complex matrix per snapshot and per
-   Fourier operator, so its footprint grows quickly with the number of pixels,
-   visibilities and frames.
+   Prefer the direct DFT for maximum speed. Switch to the NUFFT when memory 
+   becomes a problem, which happens for large numbers of data points and 
+   multiple epochs: the DFT stores a dense ``(nvis × npix²)`` complex matrix per 
+   snapshot and per Fourier operator, so its footprint grows quickly with the 
+   number of pixels, visibilities and frames.
 
-   Note that the NUFFT path currently reconstructs Stokes I only, does not
-   support bispectra or ``mbreve``, and does not support simultaneous gain
-   fitting.
+   Note that the NUFFT is currently aveilable for Stokes I only, and does not
+   support bispectra ``mbreve``, or simultaneous gain fitting.
 
 
-6. The neural field, optimizer, and training state
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+6. Neural field, optimizer, and training state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -468,11 +473,13 @@ this (purely CPU-side) preparation.
    batch_stats = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
 
 :class:`kine.model.NeuralField` is an MLP with batch normalization on every
-hidden layer and a residual skip connection from layer ``skipat`` (default: the
-first) to the output layer.
+hidden layer and a residual skip connection from the firdt layer to the output 
+one.
 
-**Positional encoding.** Before the first layer, the input coordinates are
-concatenated with a Fourier feature expansion,
+Positional encoding
+...................
+Before the first layer, the input coordinates are concatenated with a Fourier 
+feature expansion,
 
 .. math::
 
@@ -518,8 +525,8 @@ parameters follow as
 
 **Activations.** Hidden layers use ``activ``, GELU by default.
 :func:`kine.model.sharpgelu` is a sharper variant, used through
-``partial(mo.sharpgelu, s=3)``, that favours more compact structure. The Stokes I
-channel is passed through ``outactiv`` — ``nn.softplus`` for a single network,
+``partial(mo.sharpgelu, s=3)``, that favours more compact structure. The Stokes 
+I channel is passed through ``outactiv`` — ``nn.softplus`` for a single network,
 ``nn.sigmoid`` when the output is a normalized component of a decomposition —
 after subtracting ``outshift``, which starts the network near zero brightness so
 that emission has to be built up by the data rather than removed from an
@@ -665,11 +672,11 @@ carries the gain networks along without them affecting the fit.
 .. note::
 
    Simultaneous gain fitting is currently wired into the static + dynamic
-   decomposition path only (block 9, the ``s_grid`` branches). The single-network
-   and NUFFT paths ignore gain states.
+   decomposition path only (block 9, the ``s_grid`` branches). The 
+   single-network and NUFFT paths ignore gain states.
 
 
-9. The training loop
+9. Training loop
 ~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -1074,10 +1081,10 @@ resolution and dynamic range gains come from.
 
 ``nposenc: [4, 0, 0]`` encodes the time axis so that the network can follow
 structural change between epochs, while leaving the spatial axes to the MLP's
-own spectral bias. Since the sampling is irregular, whether ``get_grid`` receives
-the true MJDs matters: the network learns as a function of real elapsed time, so
-interpolated frames are correctly placed. In this scenario ``tavg: 0`` and
-``min_bl: 0`` are usual — each epoch is a full track and there is nothing to
+own spectral bias. Since the sampling is irregular, whether ``get_grid`` 
+receives the true MJDs matters: the network learns as a function of real elapsed 
+time, so interpolated frames are correctly placed. In this scenario ``tavg: 0`` 
+and ``min_bl: 0`` are usual — each epoch is a full track and there is nothing to
 discard.
 
 
@@ -1328,8 +1335,8 @@ step of a multi-step pipeline pays that cost again.
 **Memory.** The dominant cost of the direct DFT path is the Fourier operators,
 which scale as ``nvis × npix²`` per snapshot and per operator (one for direct
 products, three for closure phases, four for closure amplitudes). Reducing
-``npix``, raising ``tavg``, or raising ``min_bl`` all reduce it; when that is not
-enough, move to the NUFFT path.
+``npix``, raising ``tavg``, or raising ``min_bl`` all reduce it; when that is 
+not enough, move to the NUFFT path.
 
 **Diagnosing a run.** The per-term loss curves in the diagnostic PNG are the
 main diagnostic: the :math:`\chi^2` of each data product should approach unity.
@@ -1343,6 +1350,6 @@ corrected by re-aligning the frames afterwards.
 all the emission, since flux outside it cannot be represented and will corrupt
 the fit; the border regularizer helps keep the source inside it. The pixel size
 should oversample the expected resolution, which for a forward-modelling method
-like ``kine`` is finer than the nominal beam. Training at a modest resolution and
-re-sampling the trained network for the output keeps runtime down without
+like ``kine`` is finer than the nominal beam. Training at a modest resolution 
+and re-sampling the trained network for the output keeps runtime down without
 sacrificing the resolution of the final product.
