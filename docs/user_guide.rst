@@ -320,9 +320,8 @@ is ``fov/npix``. Both enter the reconstruction only through the grid and through
 the image metadata created in the next block.
 
 Finally, the number of output channels is set from the requested data products:
-1 for total intensity only, 3 when adding linear polarization (the EVPA is 
-described by its x and y decomposition), and 4 when including circular 
-polarization.
+1 for total intensity only, 3 when adding linear polarization, and 4 when 
+including circular polarization.
 
 .. code-block:: python
 
@@ -372,9 +371,9 @@ The loss terms from all listed data products are summed with equal weight.
      - Complex polarization ratio, for polarimetric imaging.
 
 DFT vs NNFT
-~~~~~~~~~~~
+...........
 
-**DFT**
+**Direct Fourier Transform**
 
 .. code-block:: python
 
@@ -405,7 +404,7 @@ amplitudes. Because snapshots contain different numbers of visibilities, the
 arrays are padded to a common length and ``padmask`` marks the real entries, so
 that padding contributes nothing to the loss.
 
-**NUFFT**
+**Non-Uniform Fourier Transform**
 
 .. code-block:: python
 
@@ -435,18 +434,18 @@ that padding contributes nothing to the loss.
    tria  = ut.pad(tria).astype('int32')
    quad  = ut.pad(quad).astype('int32')
 
-Here no DFT matrix is built. Instead the scaled uv points, the pulse factors, 
-and the index arrays that assemble baselines into triangles and quadrangles are 
-precomputed, and the visibilities are evaluated at run time with a non-uniform 
-FFT (``jax-finufft``). ``ut.pad`` pads the per-epoch lists into rectangular JAX 
-arrays; the ``ThreadPoolExecutor`` is only there to speed up this (purely 
-CPU-side) preparation.
+With the Non-Uniform Fourier Transform no Fourier matrix is built. Instead the 
+scaled uv points, the pulse factors, and the index arrays that assemble 
+baselines into triangles and quadrangles are precomputed, and the visibilities 
+are evaluated at run time with a non-uniform FFT (``jax-finufft``). ``ut.pad`` 
+pads the per-epoch lists into rectangular JAX arrays; the ``ThreadPoolExecutor`` 
+is only there to speed up this (purely CPU-side) preparation.
 
 .. note::
 
    Prefer the direct DFT for maximum speed. Switch to the NUFFT when memory 
-   becomes a problem, which happens for large numbers of data points and 
-   multiple epochs: the DFT stores a dense ``(nvis × npix²)`` complex matrix per 
+   becomes a problem, which happens for large numbers of data points and/or 
+   numerous epochs: the DFT stores a dense ``(nvis × npix²)`` complex matrix per 
    snapshot and per Fourier operator, so its footprint grows quickly with the 
    number of pixels, visibilities and frames.
 
@@ -478,6 +477,7 @@ one.
 
 Positional encoding
 ...................
+
 Before the first layer, the input coordinates are concatenated with a Fourier 
 feature expansion,
 
@@ -487,16 +487,14 @@ feature expansion,
    \sin(2^{\mathrm{deg}}x), \cos(2^{\mathrm{deg}}x)\right],
 
 with a separate degree per input coordinate, given by ``posenc_deg``. A degree
-of 0 leaves that coordinate unencoded, so the network sees it raw and its
+of 0 leaves that coordinate unencoded, so the network sees it raw and its 
 spectral bias suppresses fast variation along it. Higher degrees make it easier
 for the network to represent rapid variation along that coordinate.
 
-The tuple must have one entry per grid column: ``(t, x, y)`` for a 3D grid,
-``(x, y)`` for a 2D grid. When a 2D static network is built alongside a 3D one,
-the script slices the same YAML entry: ``posenc_deg=tuple(h.nposenc[-2:])``.
+Output channels
+...............
 
-**Output channels.** ``outdim`` selects which polarimetric quantities the
-network predicts:
+``outdim`` selects which polarimetric quantities the network predicts:
 
 .. list-table::
    :header-rows: 1
@@ -510,7 +508,8 @@ network predicts:
      - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
        :math:`\cos 2\hat\chi`
    * - ``5``
-     - as above plus :math:`\hat m_c`
+     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
+       :math:`\cos 2\hat\chi`, :math:`\hat m_c`
 
 The EVPA is predicted through its sine and cosine to avoid a discontinuity at
 the wrap, and recovered as
@@ -523,16 +522,16 @@ parameters follow as
    \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
    \hat V =  \hat I\,\hat m_c .
 
-**Activations.** Hidden layers use ``activ``, GELU by default.
-:func:`kine.model.sharpgelu` is a sharper variant, used through
-``partial(mo.sharpgelu, s=3)``, that favours more compact structure. The Stokes 
-I channel is passed through ``outactiv`` — ``nn.softplus`` for a single network,
-``nn.sigmoid`` when the output is a normalized component of a decomposition —
-after subtracting ``outshift``, which starts the network near zero brightness so
-that emission has to be built up by the data rather than removed from an
-initially bright frame. ``scaling_i`` multiplies the Stokes I channel;
-``scaling_ml`` caps the linear polarization fraction. The remaining channels use
-fixed sigmoids and are not configurable.
+Activations
+...........
+
+Hidden layers use ``activ``, GELU by default. :func:`kine.model.sharpgelu` is a 
+sharper variant, used through ``partial(mo.sharpgelu, s=3)``. The Stokes I 
+channel is passed through ``outactiv`` (which is ``nn.softplus`` for a single 
+network, ``nn.sigmoid`` when the output is a normalized component of a 
+decomposition) after subtracting ``outshift``. ``scaling_i`` multiplies the 
+Stokes I channel output, ``scaling_ml`` caps the linear polarization fraction. 
+The remaining channels use fixed sigmoids and are not configurable.
 
 **Optimizer and training state.**
 
@@ -559,22 +558,24 @@ smooth exponential alternative, used through ``sched.exponential``.
 7. Initialization
 ~~~~~~~~~~~~~~~~~
 
-Before fitting any data, the network is trained to reproduce a simple image.
-This is a plain pixel-to-pixel regression,
+Before fitting the data, the network parameters can be tuned so that network
+outputs a chosen image used as the starting point for the optimization. This is 
+achieved by training the network on the image with a plain pixel-to-pixel 
+regression:
 
 .. math::
 
    \mathcal{L}_\mathrm{init} = \sum_{i,j}
    \left(I_\mathrm{init}(x_i, y_i) - \hat I_W(x_i, y_i, t_j)\right)^2,
 
-with no Fourier transform involved. When imaging with closure phases — which do
-not constrain absolute position — it anchors the source in the frame; more
-generally it avoids starting the fit from a poor local minimum. What matters is
+with no Fourier transform involved. When imaging with closure phases, which do
+not constrain absolute position, the initialization helps constraining the 
+majority of the flux to the central area of the frame. What matters is
 that the initialization has roughly the right total flux and covers the region
 where the emission is expected; its detailed shape does not affect the converged
 result.
 
-The target is built with a :class:`kine.video.Video` (or
+The initialization video (or image) is built with a :class:`kine.video.Video` (or
 :class:`kine.video.Image`) object:
 
 .. code-block:: python
@@ -592,7 +593,7 @@ Stokes I video) and :meth:`~kine.video.Video.add_constant_linpol` /
 :meth:`~kine.video.Video.add_constant_circpol`.
 
 The initialization loop then looks exactly like a training loop, except that the
-target is an array rather than a set of data products:
+target is an array of pixel values rather than a set of data products:
 
 .. code-block:: python
 
@@ -628,9 +629,7 @@ Station gains can be fitted jointly with the image, as learnable parameters:
 
 .. code-block:: python
 
-   sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(
-       obslist, h.gains_prior
-   )
+   sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(obslist, h.gains_prior)
 
    ag_schedule = ut.Schedule(5e-5, 1e-3, h.niter)
    ag_network = mo.AmplitudeGains(
