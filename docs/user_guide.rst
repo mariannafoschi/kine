@@ -592,8 +592,9 @@ previous reconstruction), :meth:`~kine.video.Video.add_video_i` (load a fixed
 Stokes I video) and :meth:`~kine.video.Video.add_constant_linpol` /
 :meth:`~kine.video.Video.add_constant_circpol`.
 
-The initialization loop then looks exactly like a training loop, except that the
-target is an array of pixel values rather than a set of data products:
+The initialization loop then looks exactly like a training loop (see point 9), 
+except that the target is an array of pixel values rather than a set of data 
+products:
 
 .. code-block:: python
 
@@ -707,21 +708,36 @@ function that evaluates the network on the grid, computes the loss, takes the
 gradient with respect to every training state passed in, applies the update, and
 refreshes the batch-norm statistics.
 
-.. note::
+``tr.NPIX`` is a module-level global variable that must be set to the current 
+``npix`` before training. It is needed by the NUFFT and by the border 
+regularizer, and it must be updated at every step of a multi-resolution 
+pipeline.
 
-   ``tr.NPIX`` is a module-level global that must be set to the current ``npix``
-   before training. It is needed by the NUFFT and by the border regularizer, and
-   it must be updated at every step of a multi-resolution pipeline.
+Arguments
+.........
 
-**Why an OrderedDict.** ``train_step`` takes a single ``OrderedDict`` because
-``jax.jit`` does not preserve the order of keyword arguments. Everything the
-loss needs is passed through it, and its contents determine both the loss
-function used and the shape of the return value. Any key containing ``state`` is
-treated as a training state and receives gradients, **in the order in which the
-keys appear**, which is also the order in which the updated states are returned.
+``train_step`` takes a single ``OrderedDict`` because ``jax.jit`` does not 
+preserve the order of keyword arguments. Everything the loss function needs is 
+passed through it. The ``OrderedDict`` passed to ``train_step`` must contain the 
+following:
 
-**Which loss is used.** The dispatch is by presence of keys, tested in this
-order:
+- **states**: training states containing the current values of all learnable 
+  elements of the model, i.e. the neural network (or the two networks in the 
+  static + dynamic decomposition) and the amplitude and phase gains.
+- **grids**: array(s) of coordinate points over which the network(s) should be 
+  evaluated.
+- **data**: dictionary containing data, uncertainties, Fourier matrices, and 
+  padding masks for all data products. It should be omitted when fitting 
+  directly to an imge during initialization.
+- **light curve** (optional): array of total fluxes for each frame. Required 
+  when imaging with closure amplitues.
+- **init array**: array of the reference image or video to initialize the 
+  network. It should be omitted when fitting to data.
+
+The appropriate loss function to be used depends on the initialization or 
+imaging scenario and is chosen authomatically based on the keys present in the 
+``OrderedDict``, through a dispatch function.
+The dispatch looks for the prences of the following keys in this order:
 
 .. list-table::
    :header-rows: 1
@@ -752,15 +768,19 @@ order:
      - decomposition, flux regularized
      - As above, but the static flux is found through regularization.
 
-.. warning::
+.. note::
 
    ``grid`` is tested before ``s_grid``. A decomposition run must therefore pass
-   ``s_grid`` and ``d_grid`` and **not** ``grid``, or it will silently fall back
+   ``s_grid`` and ``d_grid`` and not ``grid``, or it will silently fall back
    to the single-network loss.
 
-**Return value.** ``train_step`` returns ``loss, ldict, *outputs, *states``. For
-every loss except the decomposition ones there is a single output array and a
-single state:
+Return value
+............
+
+``train_step`` returns the loss function ``loss``, the loss function dictionary 
+``ldict``, the image or video estimated at the current state ``*outputs``, and 
+the current states of the learnable parameters ``*states``. For every loss 
+except the decomposition ones there is a single output array and a single state:
 
 .. code-block:: python
 
@@ -780,7 +800,8 @@ regularizers, which is why ``lloss`` is built as
 ``{dp: [] for dp in h.data_prod} | {...}``: the extra keys must match the
 regularizers of the branch in use.
 
-**Regularizers.**
+Regularizers
+............
 
 .. list-table::
    :header-rows: 1
@@ -840,8 +861,7 @@ resolution. The same applies to time: passing a regular ``times`` array to
 ``get_grid`` produces evenly spaced frames from irregularly sampled
 observations.
 
-Plotting, Saivng and Resampling methods
-.......................................
+**Plotting, Saving and Resampling methods**
 
 .. list-table::
    :header-rows: 1
@@ -1319,34 +1339,3 @@ Full-Stokes reconstruction in a single network is also possible — set
 ``outdim=5`` on a :class:`kine.model.NeuralField` and include ``visQ``,
 ``visU``, ``visV`` in ``data_prod`` — but it requires data whose gains have
 already been solved for.
-
-
-Practical notes
-~~~~~~~~~~~~~~~
-
-**Compilation.** ``train_step`` is JIT-compiled, so the first iteration of each
-loop is slow while XLA compiles it. Changing the shape of anything in the
-dictionary, or the set of keys, triggers a recompilation — which is why each
-step of a multi-step pipeline pays that cost again.
-
-**Memory.** The dominant cost of the direct DFT path is the Fourier operators,
-which scale as ``nvis × npix²`` per snapshot and per operator (one for direct
-products, three for closure phases, four for closure amplitudes). Reducing
-``npix``, raising ``tavg``, or raising ``min_bl`` all reduce it; when that is 
-not enough, move to the NUFFT path.
-
-**Diagnosing a run.** The per-term loss curves in the diagnostic PNG are the
-main diagnostic: the :math:`\chi^2` of each data product should approach unity.
-A data term stuck well above 1 points to an over-constrained model (too few
-pixels, too small a field of view, too tight a gain prior); a term far below 1
-points to overestimated uncertainties. A reconstruction that drifts across the
-frame between epochs is expected when imaging with closure phases only and is
-corrected by re-aligning the frames afterwards.
-
-**Choosing the field of view and resolution.** The field of view must contain
-all the emission, since flux outside it cannot be represented and will corrupt
-the fit; the border regularizer helps keep the source inside it. The pixel size
-should oversample the expected resolution, which for a forward-modelling method
-like ``kine`` is finer than the nominal beam. Training at a modest resolution 
-and re-sampling the trained network for the output keeps runtime down without
-sacrificing the resolution of the final product.
