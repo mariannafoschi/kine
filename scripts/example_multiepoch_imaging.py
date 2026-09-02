@@ -224,8 +224,8 @@ sched = optax.piecewise_constant_schedule(
 )
 state = tr.Trainer.create(
     apply_fn=network.apply,
-    params=params['params'].unfreeze(),
-    batch_stats=batch_stats['batch_stats'].unfreeze(),
+    params=params['params'],
+    batch_stats=batch_stats['batch_stats'],
     tx=optax.adamax(sched)
 )
 

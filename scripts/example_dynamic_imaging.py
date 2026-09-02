@@ -207,8 +207,8 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'].unfreeze(),
-    batch_stats=s_batch_stats['batch_stats'].unfreeze(),
+    params=s_params['params'],
+    batch_stats=s_batch_stats['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
@@ -241,8 +241,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'].unfreeze(),
-    batch_stats=d_batch_stats['batch_stats'].unfreeze(),
+    params=d_params['params'],
+    batch_stats=d_batch_stats['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -394,7 +394,7 @@ ag_params = ag_network.init(
 )
 ag_state = tr.Trainer.create(
     apply_fn=ag_network.apply,
-    params=ag_params['params'].unfreeze(),
+    params=ag_params['params'],
     tx=optax.adamax(learning_rate=ag_schedule.exponential)
 )
 
@@ -407,7 +407,7 @@ pg_params = pg_network.init(
 )
 pg_state = tr.Trainer.create(
     apply_fn=pg_network.apply,
-    params=pg_params['params'].unfreeze(),
+    params=pg_params['params'],
     tx=optax.adamax(learning_rate=1)
 )
 
@@ -540,8 +540,8 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'].unfreeze(),
-    batch_stats=s_batch_stats['batch_stats'].unfreeze(),
+    params=s_params['params'],
+    batch_stats=s_batch_stats['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
@@ -562,8 +562,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'].unfreeze(),
-    batch_stats=d_batch_stats['batch_stats'].unfreeze(),
+    params=d_params['params'],
+    batch_stats=d_batch_stats['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -706,7 +706,7 @@ ag_params = ag_network.init(
 )
 ag_state = tr.Trainer.create(
     apply_fn=ag_network.apply,
-    params=ag_params['params'].unfreeze(),
+    params=ag_params['params'],
     tx=optax.adamax(learning_rate=ag_schedule.exponential)
 )
 
@@ -719,7 +719,7 @@ pg_params = pg_network.init(
 )
 pg_state = tr.Trainer.create(
     apply_fn=pg_network.apply,
-    params=pg_params['params'].unfreeze(),
+    params=pg_params['params'],
     tx=optax.adamax(learning_rate=1)
 )
 
@@ -891,8 +891,8 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'].unfreeze(),
-    batch_stats=s_batch_stats['batch_stats'].unfreeze(),
+    params=s_params['params'],
+    batch_stats=s_batch_stats['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
@@ -917,8 +917,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'].unfreeze(),
-    batch_stats=d_batch_stats['batch_stats'].unfreeze(),
+    params=d_params['params'],
+    batch_stats=d_batch_stats['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -1056,7 +1056,7 @@ ag_params = ag_network.init(
 )
 ag_state = tr.Trainer.create(
     apply_fn=ag_network.apply,
-    params=ag_params['params'].unfreeze(),
+    params=ag_params['params'],
     tx=optax.adamax(learning_rate=ag_schedule.exponential)
 )
 
@@ -1069,7 +1069,7 @@ pg_params = pg_network.init(
 )
 pg_state = tr.Trainer.create(
     apply_fn=pg_network.apply,
-    params=pg_params['params'].unfreeze(),
+    params=pg_params['params'],
     tx=optax.adamax(learning_rate=1)
 )
 
