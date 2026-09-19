@@ -570,10 +570,10 @@ regression:
 
 with no Fourier transform involved. When imaging with closure phases, which do
 not constrain absolute position, the initialization helps constraining the 
-majority of the flux to the central area of the frame. What matters is
-that the initialization has roughly the right total flux and covers the region
-where the emission is expected; its detailed shape does not affect the converged
-result.
+majority of the flux to the central area of the frame. 
+While it is important that the initialization has roughly the right total flux 
+and covers the region where the emission is expected, its detailed shape does 
+not affect the converged result.
 
 The initialization video (or image) is built with a :class:`kine.video.Video` (or
 :class:`kine.video.Image`) object:
@@ -587,10 +587,10 @@ The initialization video (or image) is built with a :class:`kine.video.Video` (o
 :meth:`~kine.video.Video.add_tophat` builds a blurred disk carrying the
 light-curve flux in each frame, from ``init_params``: ``fwhm`` (disk diameter in
 µas), ``blur`` (Gaussian blurring in µas), and ``posx``/``posy`` (offsets in
-pixels). Alternatives are :meth:`~kine.video.Video.from_h5` (start from a
-previous reconstruction), :meth:`~kine.video.Video.add_video_i` (load a fixed
-Stokes I video) and :meth:`~kine.video.Video.add_constant_linpol` /
-:meth:`~kine.video.Video.add_constant_circpol`.
+pixels). The polarization channels can be initialized to constant values with 
+:meth:`~kine.video.Video.add_constant_linpol` /
+:meth:`~kine.video.Video.add_constant_circpol`. Alternatively the initialization video can be created from a chosen input file with `~kine.video.Video.from_h5` 
+or :meth:`~kine.video.Video.add_video_i` (for Stokes I only).
 
 The initialization loop then looks exactly like a training loop (see point 9), 
 except that the target is an array of pixel values rather than a set of data 
@@ -626,8 +626,6 @@ queue to drain before the script moves on.
 8. Gain fitting
 ~~~~~~~~~~~~~~~
 
-Station gains can be fitted jointly with the image, as learnable parameters:
-
 .. code-block:: python
 
    sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(obslist, h.gains_prior)
@@ -653,6 +651,7 @@ Station gains can be fitted jointly with the image, as learnable parameters:
        tx=optax.adamax(learning_rate=1)
    )
 
+Station gains can be fitted jointly with the image, as learnable parameters:
 :meth:`~kine.obsdata.Obsdata.set_gains_vars` reads ``gains_prior`` — a
 per-telescope ``[lower, upper]`` range of allowed multiplicative amplitude
 corrections — and returns the bookkeeping needed to map each visibility to the
@@ -667,7 +666,7 @@ gains together when ``visI`` is.
 
 .. note::
 
-   Simultaneous gain fitting is currently wired into the static + dynamic
+   Simultaneous gain fitting is currently available for the static + dynamic
    decomposition path only. The single-network and NUFFT paths ignore gain 
    fitting.
 
@@ -713,13 +712,30 @@ refreshes the batch-norm statistics.
 regularizer, and it must be updated at every step of a multi-resolution 
 pipeline.
 
+When using NUFFT, :meth:`kine.trainer.Trainer.train_step` should also take the 
+NUFFT arguments as input:
+
+.. code-block:: python
+
+   loss, ldict, out, state = tr.Trainer.train_step(
+       odict(
+           state=state,
+           grid=grid,
+           data=data,
+           lcurve=lcurve,
+           uvpoints=uv,
+           pulsefac=pulse,
+           uvind=uvind,
+           triangles=tria,
+           quadrangles=quad
+       )
+   )
+
 Arguments
 .........
 
-``train_step`` takes a single ``OrderedDict`` because ``jax.jit`` does not 
-preserve the order of keyword arguments. Everything the loss function needs is 
-passed through it. The ``OrderedDict`` passed to ``train_step`` must contain the 
-following:
+``train_step`` takes a single ``OrderedDict`` as input and verything the loss 
+function needs is passed through it. The ``OrderedDict`` passed to ``train_step`` must contain the following:
 
 - **states**: training states containing the current values of all learnable 
   elements of the model, i.e. the neural network (or the two networks in the 
@@ -729,10 +745,10 @@ following:
 - **data**: dictionary containing data, uncertainties, Fourier matrices, and 
   padding masks for all data products. It should be omitted when fitting 
   directly to an imge during initialization.
-- **light curve** (optional): array of total fluxes for each frame. Required 
-  when imaging with closure amplitues.
 - **init array**: array of the reference image or video to initialize the 
   network. It should be omitted when fitting to data.
+- **light curve** (optional): array of total fluxes for each frame. Required 
+  when imaging with closure amplitues.
 
 The appropriate loss function to be used depends on the initialization or 
 imaging scenario and is chosen authomatically based on the keys present in the 
@@ -754,7 +770,7 @@ The dispatch looks for the prences of the following keys in this order:
      - Regress the polarization channels only, with Stokes I ignored.
    * - ``uvpoints``
      - NUFFT training
-     - Stokes I data products evaluated with a non-uniform FFT.
+     - Apply a non-uniform FFT instead of the default DFT.
    * - ``init_vid_i``
      - polarimetric training
      - Fit Q and U with Stokes I held fixed at a given video.
@@ -770,9 +786,8 @@ The dispatch looks for the prences of the following keys in this order:
 
 .. note::
 
-   ``grid`` is tested before ``s_grid``. A decomposition run must therefore pass
-   ``s_grid`` and ``d_grid`` and not ``grid``, or it will silently fall back
-   to the single-network loss.
+   ``grid`` is tested before ``s_grid``. When running with the static+dynamic 
+   decomposition, ``s_grid`` and ``d_grid`` should be passed instead of ``grid``.
 
 Return value
 ............
@@ -800,48 +815,9 @@ regularizers, which is why ``lloss`` is built as
 ``{dp: [] for dp in h.data_prod} | {...}``: the extra keys must match the
 regularizers of the branch in use.
 
-Regularizers
-............
-
-.. list-table::
-   :header-rows: 1
-   :widths: 18 26 56
-
-   * - Key
-     - Where
-     - What it does
-   * - ``lcurve``
-     - single-network, NUFFT
-     - Constrains the total flux of each frame to the light curve. Needed
-       whenever closure amplitudes are used, since they carry no flux
-       information.
-   * - ``border``
-     - decomposition
-     - Penalizes flux in the outer ``npix/20`` rows and columns, keeping the
-       source away from the frame edge. Weight ``w_border`` (default ``1e3``).
-   * - ``s_flux``, ``d_flux``
-     - decomposition, fluxes assigned
-     - Force the static image and each dynamic frame to sum to unity, so that
-       the physical flux is carried entirely by the light curve. Weight
-       ``w_flux`` (default ``1e3``).
-   * - ``min_dyn``
-     - decomposition, flux regularized
-     - Minimizes the persistent flux of the dynamic component, pushing
-       time-constant emission into the static network. Weight ``w_flux``
-       (default ``5``).
-   * - ``overlap``
-     - polarimetric
-     - Suppresses polarized emission where there is no total intensity.
-
-Weights are overridden by passing them into the dict, e.g. ``w_border=0``.
-
 
 10. Saving and resampling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Because the trained network is continuous, the final result is not necessarily 
-the array produced by the last training iteration but it can be a new evaluation 
-of the trained network on a finer grid:
 
 .. code-block:: python
 
@@ -855,11 +831,10 @@ of the trained network on a finer grid:
    video.from_state(state, grid_out)
    video.save_h5('./output.h5')
 
-Re-sampling on a finer grid is genuinely cheap — it is one forward pass — so the
-training resolution can be kept modest while the output is written at higher
-resolution. The same applies to time: passing a regular ``times`` array to
-``get_grid`` produces evenly spaced frames from irregularly sampled
-observations.
+Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of 
+the trained network on a finer grid.
+The same applies to time: passing a regular ``times`` array to ``get_grid`` 
+produces evenly spaced frames from irregularly sampled observations.
 
 **Plotting, Saving and Resampling methods**
 
@@ -880,11 +855,11 @@ observations.
    * - :meth:`~kine.video.Video.plot_gif`
      - Saves video as GIF.
    * - :meth:`~kine.video.Video.save_h5`
-     - saves video in HDF5 format.
+     - Saves video in HDF5 format.
    * - :meth:`~kine.video.Video.save_fits`
-     - saves image in FITS format.
+     - Saves image in FITS format.
    * - :meth:`~kine.video.Video.save_gains`
-     - Saves fotted gains in a TXT file.
+     - Saves fitted gains in a TXT file.
 
 
 Imaging scenarios
@@ -929,18 +904,15 @@ scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
 Static imaging
 ~~~~~~~~~~~~~~
 
-Reconstruct a single image from a single observation. This is the simplest
-scenario and the best starting point.
-
-**What changes**
+Reconstruct a single image from a single observation.
 
 - *Block 1* — use ``vi.Image.async_plot`` and the :class:`kine.video.Image`
   class throughout, instead of :class:`kine.video.Video`.
 - *Block 3* — no ``split_obs``: the whole observation is fitted as one block.
   The flux constraint is the single number ``totflux = obs.get_zbl()``.
-- *Block 4* — a 2D grid, ``ut.get_grid(h.npix, h.npix)``. ``nposenc`` therefore
-  has **two** entries, one for ``x`` and one for ``y``
-  (``params_static_imaging.yml`` uses ``[0, 0]``).
+- *Block 4* — use a 2D grid, ``ut.get_grid(h.npix, h.npix)``. ``nposenc`` 
+  therefore has **two** entries, for x and y, (``params_static_imaging.yml`` uses 
+  ``[0, 0]``).
 - *Block 5* — ``get_data`` is called with a single ``Obsdata``, so it returns
   ``(target, sigma, A)`` and there is no ``padmask``. The 2D loss functions are
   selected automatically by the absence of that key.
@@ -968,17 +940,6 @@ scenario and the best starting point.
      image.from_state(state, grid_out)
      image.save_fits('./output_image.fits')
 
-**Options**
-
-``data_prod`` is the main choice. With well-calibrated data, ``[visI]`` uses all
-the available information. With residual gains, use
-``[cphaseI, logcampI]`` — the closure pair used in
-``params_static_imaging.yml`` — and rely on the ``lcurve`` term to fix the total
-flux, and on the initialization to fix the position in the frame. Adding
-``visQ``/``visU`` to the list raises ``outdim`` to 4 and reconstructs linear
-polarization simultaneously; adding ``visV`` raises it to 5.
-
-
 .. _spectral-imaging:
 
 Spectral imaging
@@ -990,7 +951,11 @@ dynamic imaging: the network learns a smooth interpolation across the frequency
 axis, so the reconstruction can be sampled at frequencies that were not
 observed.
 
-**What changes**
+The output is a cube of images, one per observed frequency, and the network can
+be re-sampled at intermediate frequencies. There is no explicit spectral-index
+model: the spectral dependence is whatever the neural field interpolates between
+the observed bands. Explicit spectral modelling, and combining the spectral and
+multi-epoch axes, are planned developments.
 
 - *Block 3* — load one file per frequency into ``obslist`` and match the
   metadata with :meth:`~kine.obsdata.Obsdata.fix_multifreq`, which leaves each
@@ -1008,38 +973,7 @@ observed.
   ``labels`` is passed to the ``Video`` constructor as ``dates=labels`` and is
   used to caption the frames; without it the frames are labelled by the raw
   coordinate value.
-- *Block 5* — the NUFFT path, since spectral runs are usually at high
-  resolution (``params_multifreq_imaging.yml`` uses ``npix: 100``,
-  ``npix_out: 200``).
-- *Block 6* — ``outdim = 1``: spectral imaging is currently Stokes I only, which
-  is also what the NUFFT loss supports. ``nposenc: [0, 0, 0]`` leaves the
-  frequency axis unencoded, so the spectral behaviour stays smooth.
-- *Block 9* — pass the NUFFT variables:
-
-  .. code-block:: python
-
-     loss, ldict, out, state = tr.Trainer.train_step(
-         odict(
-             state=state,
-             grid=grid,
-             data=data,
-             lcurve=lcurve,
-             uvpoints=uv,
-             pulsefac=pulse,
-             uvind=uvind,
-             triangles=tria,
-             quadrangles=quad
-         )
-     )
-
-**Options**
-
-The output is a cube of images, one per observed frequency, and the network can
-be re-sampled at intermediate frequencies. There is no explicit spectral-index
-model: the spectral dependence is whatever the neural field interpolates between
-the observed bands. Explicit spectral modelling, and combining the spectral and
-multi-epoch axes, are planned developments.
-
+- *Block 6* — ``outdim = 1``: spectral imaging is applied to Stokes I only.
 
 .. _multiepoch-imaging:
 
@@ -1047,10 +981,7 @@ Multi-epoch imaging
 ~~~~~~~~~~~~~~~~~~~
 
 Reconstruct the evolution of a source across many separate observations,
-spanning days to decades — for example a monitoring programme such as MOJAVE.
-Each epoch contributes one frame, and imaging all epochs together means each
-frame is constrained by far more data than it would be alone, which is where the
-resolution and dynamic range gains come from.
+spanning days to decades. Each epoch corresponds to one frame, but each frame is constrained using information from all frames.
 
 **What changes**
 
@@ -1065,10 +996,7 @@ resolution and dynamic range gains come from.
          if obslist[i].scans is not None and len(obslist[i].scans) == 0:
              obslist[i].scans = None
 
-  Wrapping the load in ``try``/``except`` is worthwhile: with hundreds of
-  archival files, a few are usually unreadable, and the script reports them
-  rather than aborting.
-- *Block 4* — times come from the file metadata rather than from ``tstart``:
+- *Block 4* — time stamps can be extracted from the mjd in the file metadata :
 
   .. code-block:: python
 
@@ -1081,42 +1009,23 @@ resolution and dynamic range gains come from.
   ``datetime.strptime`` pattern can be supplied through ``fmt=`` to parse the
   dates from the file names instead, and a list of already-loaded ``Obsdata``
   can be passed instead of paths. ``labels=True`` returns ``YYYY-MM-DD`` strings
-  for plot captions; the default rounds down to integer MJD, one coordinate per
-  day. Pass ``dates=dates`` to the ``Video`` constructor.
-- *Block 5* — the NUFFT path. This is the scenario the NUFFT exists for:
-  ``params_multiepoch_imaging.yml`` uses ``npix: 300`` over a 1000 µas field
-  with of order a hundred epochs, where the DFT matrices would not fit in
-  memory.
-- *Block 7* — the initialization disk is typically offset (``posx: -50``,
-  ``posy: 50``) to place a one-sided jet sensibly within the frame, since
-  closure phases do not constrain absolute position.
-- *Block 9* — as for spectral imaging, with the NUFFT variables in the dict.
-  Multi-epoch runs are long (``niter: 30000``); the diagnostic plots use
-  ``scale='log'`` with a ``drange`` to show the faint extended emission.
-
-**Options**
-
-``nposenc: [4, 0, 0]`` encodes the time axis so that the network can follow
-structural change between epochs, while leaving the spatial axes to the MLP's
-own spectral bias. Since the sampling is irregular, whether ``get_grid`` 
-receives the true MJDs matters: the network learns as a function of real elapsed 
-time, so interpolated frames are correctly placed. In this scenario ``tavg: 0`` 
-and ``min_bl: 0`` are usual — each epoch is a full track and there is nothing to
-discard.
-
+  for plot captions. Pass ``dates=dates`` to the ``Video`` constructor.
+- *Block 5,9* — with a large number of epochs NUFFT is strongly recommended.
 
 .. _dynamic-imaging:
 
 Dynamic imaging
 ~~~~~~~~~~~~~~~
 
-Reconstruct a video from a *single* observation of a source that varies within
-the track, such as Sgr A* with the EHT. Here the instantaneous coverage is far
-too sparse to constrain individual frames, so the reconstruction relies entirely
-on sharing information across time.
-
+Reconstruct a video from a single observation of a source that varies within
+the track. The underlying assumptions in this imaging scenario are that the 
+instantaneous coverage is far too sparse to constrain individual frames and that 
+phases are not calibrated. This is the case for horizon-scale observations of 
+Sgr A* by the Event Horizon Telescope and the following pipeline has been 
+developed specifically for such observations.
 This scenario uses two extensions of the basic structure: a decomposition into a
-persistent and a variable component, and a three-step pipeline.
+persistent and a variable component, and three iterations of the imaging 
+procedure.
 
 **Static + dynamic decomposition**
 
@@ -1130,14 +1039,14 @@ The source is modelled as a persistent image plus a time-variable video,
 where :math:`f_\mathrm{static}` is a 2D neural field, :math:`f_\mathrm{dynamic}`
 a 3D one, :math:`L(t)` is the light curve, and :math:`S_\mathrm{static}` is the
 flux of the persistent component. Both fields are normalized to unit total flux
-by the ``s_flux`` and ``d_flux`` regularizers, so all the physical flux is
-carried by the light curve. This is also why the data must be normalized with
-:meth:`~kine.obsdata.Obsdata.norm_to_max` in block 3.
+so the physical flux value is carried by the light curve. This is also why the 
+data must be normalized with :meth:`~kine.obsdata.Obsdata.norm_to_max` in block 
+3.
 
 Both networks use ``outactiv=nn.sigmoid`` rather than softplus, since their
 outputs are normalized fractions; the static network is shallower
-(``s_depth: 4``) than the dynamic one (``d_depth: 6``), and takes the last two
-entries of ``nposenc`` because its grid is 2D.
+(``s_depth: 4``) than the dynamic one (``d_depth: 6``), and takes only the last 
+two entries of ``nposenc`` since its grid is 2D.
 
 **The three-step pipeline**
 
@@ -1148,24 +1057,20 @@ The script runs blocks 4--10 three times, at increasing resolution:
    :widths: 12 22 66
 
    * - Step
-     - Resolution
      - Purpose
    * - 0
-     - ``npix_0: 16``, 160 µas
      - Find :math:`S_\mathrm{static}`.
    * - 1
-     - ``npix_1: 32``, 160 µas
      - Reconstruct the video from a disk initialization, with the flux split
        assigned.
    * - 2
-     - ``npix_2: 64``, 200 µas
      - Refine, initialized from the step 1 video.
 
-*Step 0* trains both networks with the flux-regularized loss — ``s_grid`` and
-``d_grid`` in the dict, but **no** ``min_lcurve`` or ``lcurve``. The
-``min_dyn`` regularizer minimizes the persistent flux in the dynamic component,
-so time-constant emission accumulates in the static network. The static flux
-follows from its total:
+**Step 0** starting with grids and data products at ``npix_1``, trains both 
+networks with the flux-regularized loss, ``s_grid`` and ``d_grid`` are in the 
+dict, without ``min_lcurve`` or ``lcurve``. The ``min_dyn`` regularizer minimizes 
+the persistent flux in the dynamic component, so time-constant emission 
+accumulates in the static network. The static flux follows from its total:
 
 .. code-block:: python
 
@@ -1178,9 +1083,8 @@ minimum less a small offset, guaranteeing that
 at ``1e-12`` in this step (``ut.Schedule(1e-12, 1e-12, h.niter_0)``), i.e. gains
 are effectively frozen while the flux split is being determined.
 
-*Step 1* rebuilds the grids and data products at ``npix_1``, re-initializes both
-networks from a disk, releases the gains (``ut.Schedule(5e-5, 1e-3, h.niter_1)``)
-and trains with the assigned split:
+**Step 1** rebuilds the grids and data products at ``npix_1``, re-initializes 
+both networks to a disk, starts fitting the gains (``ut.Schedule(5e-5, 1e-3, h.niter_1)``) and trains with the assigned split:
 
 .. code-block:: python
 
@@ -1204,36 +1108,18 @@ The result is written with :meth:`~kine.video.Video.from_states`, which
 evaluates both networks and recombines them with the light curve, plus
 ``save_h5`` and ``save_gains``.
 
-*Step 2* repeats at ``npix_2`` with three changes: the networks are initialized
-from ``video_1.h5`` via :meth:`~kine.video.Video.from_h5` rather than from a
-disk (``blur=0`` with ``fn=np.median`` for the static field, ``blur=30`` for the
-dynamic one), the dynamic network switches to the sharper activation
-(``d_network.activ = partial(mo.sharpgelu, s=3)``), and the border regularizer
-is switched off with ``w_border=0``, since the source is already well centred.
+**Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.video.Video.from_h5` rather 
+than from a disk. The dynamic component in the initialization video is blurred 
+(``blur=0`` with ``fn=np.median`` for the static field, ``blur=30`` for the
+dynamic one). Then the dynamic network switches to the sharper activation
+(``d_network.activ = partial(mo.sharpgelu, s=3)``).
 
 .. note::
 
    Each step re-creates the grids, the data products, the ``improxy``, the
    network parameters and the training states, because they all depend on
    ``npix`` and ``fov``. Only the *network definitions*, the light curve and
-   ``min_lcurve`` carry over. Remember to update ``tr.NPIX`` at each step.
-
-**Options**
-
-``gains_prior`` should reflect what is known about each station's calibration:
-tight bounds for well-calibrated antennas, loose ones for stations with known
-problems. ``nposenc: [6, 0, 0]`` gives the time axis a high encoding degree,
-which is what allows intra-track variability to be represented. The
-``initniter``/``niter`` pairs are set per step, with step 2 typically using more
-initialization iterations (to reproduce a detailed video rather than a disk) and
-fewer training ones.
-
-If the source has no persistent component worth separating, the decomposition
-can be dropped entirely: use a single 3D network and the single-network loss
-(``grid``, ``data``, ``lcurve``), exactly as in multi-epoch imaging but with
-``times`` taken from the snapshots. Note that gain fitting is not available on
-that path.
-
+   ``min_lcurve`` carry over. ``tr.NPIX`` should be updated at each step.
 
 .. _polarimetric-imaging:
 
@@ -1247,14 +1133,13 @@ intensity is reconstructed first from closure quantities, the data are
 self-calibrated to that reconstruction, and the polarization is then fitted with
 complex visibilities.
 
-**What changes**
-
 - *Block 3* — no ``norm_to_max`` (there is no decomposition to normalize), and
   stations that observed in a single polarization are flagged out, e.g.
   ``obs = obs.flag_sites(['JC'])``.
 - *Block 5* — ``data_prod: [visQ, visU]``. Stokes I is not fitted, so it does
   not appear.
-- *Block 6* — a different network class:
+- *Block 6* — use a different network class: :class:`kine.model.NeuralFieldPol`,
+  which outputs only the three polarization channels. 
 
   .. code-block:: python
 
@@ -1271,9 +1156,6 @@ complex visibilities.
          scaling_ml=h.scaling_ml
      )
 
-  :class:`kine.model.NeuralFieldPol` outputs only the three polarization
-  channels. ``scaling_ml`` caps the linear polarization fraction
-  (``0.75`` in ``params_dynamic_imaging_pol.yml``).
 - *Block 7* — the initialization loads the fixed Stokes I video and adds a
   constant polarization to it, then regresses only the polarization channels:
 
@@ -1292,7 +1174,6 @@ complex visibilities.
          )
      )
 
-  Note that this uses ``init_vid_ml``/``init_vid_x``, not ``init_arr``.
 - *Block 9* — the fixed Stokes I video is passed as ``init_vid_i``, which is
   what selects the polarimetric loss:
 
@@ -1314,10 +1195,10 @@ complex visibilities.
      \hat Q = -\hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
      \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi,
 
-  and the ``overlap`` term, :math:`\langle |m_\ell|\,e^{-|I|/\tau}\rangle` with
-  :math:`\tau = 0.01`, suppresses polarization in regions with no total
-  intensity. The loss dictionary keys are therefore the data products plus
-  ``overlap``.
+  with a regularizer term :math:`\langle |m_\ell|\,e^{-|I|/\tau}\rangle` with
+  :math:`\tau = 0.01`, suppressing polarization in regions with no total
+  intensity. The loss dictionary keys are therefore the data products plus the 
+  ``overlap`` regularizer term.
 - *Block 10* — since the network does not predict Stokes I, the total intensity
   must be attached to the output object by hand before plotting or saving:
 
@@ -1330,12 +1211,3 @@ complex visibilities.
      video.plot_gif(outpath='./out_pol.gif')
      video.save_h5('./video_pol.h5')
 
-**Options**
-
-``nposenc: [4, 0, 0]`` is lower than for the Stokes I run, since polarization
-structure is generally smoother in time and the Q/U data are noisier. The sharp
-GELU activation is used from the start rather than only in a refinement step.
-Full-Stokes reconstruction in a single network is also possible — set
-``outdim=5`` on a :class:`kine.model.NeuralField` and include ``visQ``,
-``visU``, ``visV`` in ``data_prod`` — but it requires data whose gains have
-already been solved for.
