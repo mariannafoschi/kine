@@ -195,7 +195,7 @@ Available preprocessing
      - Adds a fraction of the visibility amplitude to the uncertainties, as a
        systematic noise budget. 
    * - :meth:`~kine.obsdata.Obsdata.flag_UT_range`
-     - Keeps (``output='kept'``) or removes (``output='flagged'``) data in a UT
+     - Keeps (``output='flagged'``) or removes (``output='kept'``) data in a UT
        window. Used to trim the edges of a track, or to remove a scan in which a
        key antenna is missing.
    * - :meth:`~kine.obsdata.Obsdata.flag_sites`
