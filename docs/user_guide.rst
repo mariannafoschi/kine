@@ -1002,7 +1002,7 @@ spanning days to decades. Each epoch corresponds to one frame, but each frame is
 
      times = ut.get_times_multiepoch(obspath)
      dates = ut.get_times_multiepoch(obspath, labels=True)
-     grid  = ut.get_grid(h.npix_1, h.npix_1, len(obslist), times=times)
+     grid  = ut.get_grid(h.npix, h.npix, len(obslist), times=times)
 
   :func:`kine.utils.get_times_multiepoch` reads the MJD from each UV-FITS
   header, so no assumption is made about file naming; a

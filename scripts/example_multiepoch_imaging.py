@@ -127,7 +127,7 @@ dates = ut.get_times_multiepoch(obspath, labels=True)
 ntimes = len(obslist)
 
 # Set 3D coordinate grids
-grid = ut.get_grid(h.npix_1, h.npix_1, ntimes, times=times)
+grid = ut.get_grid(h.npix, h.npix, ntimes, times=times)
 
 # Set polarization channels
 outdim = 1
@@ -135,7 +135,7 @@ if 'visQ' in h.data_prod: outdim = 4
 if 'visV' in h.data_prod: outdim = 5
 
 # Set empty image for image metadata and dimensions
-improxy = eh.image.make_square(obslist[0], h.npix_1, fov, pol_prim='I')
+improxy = eh.image.make_square(obslist[0], h.npix, fov, pol_prim='I')
 
 # Compute lists of data products (target), uncertainties (sigma),
 # and Fourier matrix (A) at each observed time
@@ -237,7 +237,7 @@ state = tr.Trainer.create(
 
 init_vid = vi.Video(
     times,
-    h.npix_1,
+    h.npix,
     fov,
     obs.ra,
     obs.dec,
@@ -253,7 +253,7 @@ init_vid.plot()
 # Initialize video and loss
 init = vi.Video(
     times,
-    h.npix_1,
+    h.npix,
     fov,
     obs.ra,
     obs.dec,
@@ -304,13 +304,13 @@ q.join()
 # Training
 
 # Update NPIX for training with NUFFT
-tr.NPIX = h.npix_1
+tr.NPIX = h.npix
 
 # ..............
 # Traininig loop
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter, dates=dates)
+video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter, dates=dates)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
 # Looping over epochs
@@ -372,7 +372,7 @@ video.plot_gif(scale='log', drange=5e2, outpath='./out_1.gif')
 # Save video, gains, and model parameters
 
 # Re-set grid up for output video
-grid = ut.get_grid(h.npix_2, h.npix_2, ntimes, times=times)
+grid = ut.get_grid(h.npix_out, h.npix_out, ntimes, times=times)
 
 # Generate output video
 print(
@@ -380,6 +380,6 @@ print(
 Sampling network on a finer grid and saving results...
     """
 )
-video = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter, dates=dates)
+video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=dates)
 video.from_state(state, grid)
 video.save_h5('./video_1.h5')

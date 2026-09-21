@@ -2,7 +2,7 @@
 Parameter Reference
 ===================
 
-``kine`` imaging scripts read their settings from a YAML configuration file,
+The ``kine`` imaging scripts read their settings from a YAML configuration file,
 passed on the command line with ``-yml``:
 
 .. code-block:: bash
@@ -19,42 +19,27 @@ attribute, so that ``h.npix`` can be written instead of ``h['npix']``:
        h = yaml.safe_load(f)
    h = ut.HyperParams(h)
 
-.. important::
+:class:`~kine.utils.HyperParams` performs **no validation and provides no
+defaults**. Every key a script reads must be present in the YAML file, or an
+``AttributeError`` is raised at the line where it is used. Conversely, keys
+that a script never reads are simply ignored, and any new key added to the file 
+becomes available on ``h``. The tables below therefore list *example* values, 
+not defaults. The user can and should personalize the YAML parameter file to the 
+main ``kine`` code. 
 
-   :class:`~kine.utils.HyperParams` performs **no validation and provides no
-   defaults**. Every key a script reads must be present in the YAML file, or an
-   ``AttributeError`` is raised at the line where it is used. Conversely, keys
-   that a script never reads are simply ignored, and any new key added to the
-   file becomes available on ``h`` without further wiring. The tables below
-   therefore list *example* values, not defaults: the defaults quoted for the
-   network arguments are the defaults of the corresponding
-   :class:`kine.model.NeuralField` argument, which the example scripts always
-   override with the YAML value.
 
 Indexed parameter names
 -----------------------
 
 Some keys carry a numeric suffix. The suffix is **not** interpreted by
-``kine``: it is only a naming convention used by the example scripts, and its
-meaning differs between them.
+``kine``: it is only a naming convention used by ``example_dynamic_imaging.py``,
+in which ``_0``, ``_1`` and ``_2`` label the three rounds of the
+multi-resolution pipeline (see :ref:`dynamic-imaging`). Each round rebuilds the
+grids, data products and training states at its own ``fov_uas_i`` and
+``npix_i``, and trains for ``initniter_i`` + ``niter_i`` iterations.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Script
-     - Meaning of the suffix
-   * - ``example_dynamic_imaging.py``
-     - ``_0``, ``_1``, ``_2`` are the three rounds of the multi-resolution
-       pipeline (see :ref:`dynamic-imaging`). Each round rebuilds the grids,
-       data products and training states at its own ``fov_uas_i``/``npix_i``
-       and trains for ``initniter_i`` + ``niter_i`` iterations.
-   * - ``example_multiepoch_imaging.py``
-     - ``npix_1`` is the resolution the network is *trained* at, ``npix_2`` the
-       (finer) resolution the trained network is *re-sampled* at when saving.
-   * - ``example_static_imaging.py``, ``example_spectral_imaging.py``
-     - No suffix; the output resolution is given by the separate key
-       ``npix_out``.
+All the other scripts train at a single resolution, ``npix``, and re-sample the
+trained network at ``npix_out`` when writing the output.
 
 Parameters by scenario
 ----------------------
@@ -107,13 +92,13 @@ Keys defined by each parameter file shipped in ``parameters/``
    * - ``npix``
      - ✓
      - ✓
-     - ``_1 _2``
+     - ✓
      - ``_0 _1 _2``
      - ✓
    * - ``npix_out``
      - ✓
      - ✓
-     -
+     - ✓
      -
      -
    * - ``data_prod``
@@ -286,18 +271,20 @@ See :doc:`user_guide` block 4.
      - int
      - ``64``
      - Number of pixels per side of the training grid, so the pixel size is
-       ``fov_uas / npix``. Indexed variants ``npix_0``, ``npix_1``, ``npix_2``
-       give the per-round resolution in ``example_dynamic_imaging.py``; in
-       ``example_multiepoch_imaging.py``, ``npix_1`` is the training
-       resolution and ``npix_2`` the output resolution.
+       ``fov_uas / npix``. In ``example_dynamic_imaging.py`` the indexed
+       variants ``npix_0``, ``npix_1``, ``npix_2`` give the resolution of each
+       pipeline round.
    * - ``npix_out``
      - int
      - ``200``
-     - Resolution the trained network is re-sampled at when the final image or
-       cube is written (:doc:`user_guide` block 10). Because the neural field
-       is continuous, this can be larger than ``npix`` at no extra training
-       cost. Used by ``example_static_imaging.py`` and
-       ``example_spectral_imaging.py``.
+     - Resolution the trained network is re-sampled at when the final image,
+       video or cube is written (:doc:`user_guide` block 10). Because the
+       neural field is continuous, this can be larger than ``npix`` at no
+       extra training cost. Used by ``example_static_imaging.py``,
+       ``example_spectral_imaging.py`` and
+       ``example_multiepoch_imaging.py``; ``example_dynamic_imaging.py``
+       writes its output at the ``npix_2`` of its last round, and
+       ``example_dynamic_imaging_pol.py`` writes at ``npix``.
 
 .. note::
 
@@ -699,8 +686,8 @@ by ``scripts/run_kine.sh``.
    min_bl: 0
 
    fov_uas: 1000
-   npix_1: 300              # training resolution
-   npix_2: 300              # output (re-sampling) resolution
+   npix: 300                # training resolution
+   npix_out: 300            # output (re-sampling) resolution
    data_prod: [cphaseI, logcampI]
 
    init_params: {fwhm: 60, blur: 20, posx: -50, posy: 50}
