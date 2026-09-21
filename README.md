@@ -4,8 +4,6 @@
 
 Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthedocs.io/), ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It uses and complements the [`eht-imaging`](https://github.com/achael/eht-imaging) library for VLBI data handling.
 
-**NOTE:** API docs are still provisional.
-
 ### Imaging modes
 
 `kine` can be used for the following imaging tasks:
@@ -32,11 +30,13 @@ Coming Soon:
 
 ## Documentation
 
+**NOTE:** API docs are still provisional.
+
 Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes installation instructions, simple example scripts to get started, a complete user guide to imaging with kine, a parameter overview, and API documentation.
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:
 
-1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Accepted (2026).
+1. _[Main algorithm, Muti-epoch imaging, Static Imaging]_ : Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Nature (2026).
 2. _[Static + Dynamic decomposition, EHT SgrA* pipeline]_ : Fuentes A., Foschi M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine". Under review (2026).
 
 ## Developers
@@ -53,7 +53,7 @@ If you would like support for using kine in your project or find an issue in the
 
  If you use `kine` in your publication, please cite:
 
-1. Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Accepted (2026).
+1. Foschi M., Zhao B., Fuentes A. et al. "Video reconstruction of variable VLBI observations with neural fields". Nature (2026).
 2. Fuentes A., Foschi M. et al. "Validation of horizon-scale Sagittarius A* video reconstructions with kine". Under review (2026).
 
 
