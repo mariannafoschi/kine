@@ -10,7 +10,7 @@ passed on the command line with ``-yml``:
    python example_static_imaging.py -obs observations.uvfits -yml params.yml
 
 The file is loaded with ``yaml.safe_load`` and wrapped in
-:class:`kine.utils.HyperParams`, which simply exposes every top-level key as an
+:class:`kine.utils.HyperParams`, which exposes every top-level key as an
 attribute, so that ``h.npix`` can be written instead of ``h['npix']``:
 
 .. code-block:: python
@@ -23,23 +23,9 @@ attribute, so that ``h.npix`` can be written instead of ``h['npix']``:
 defaults**. Every key a script reads must be present in the YAML file, or an
 ``AttributeError`` is raised at the line where it is used. Conversely, keys
 that a script never reads are simply ignored, and any new key added to the file 
-becomes available on ``h``. The tables below therefore list *example* values, 
-not defaults. The user can and should personalize the YAML parameter file to the 
+becomes available on ``h``. The tables below therefore list example values, not 
+defaults. The user can and should personalize the YAML parameter file to the 
 main ``kine`` code. 
-
-
-Indexed parameter names
------------------------
-
-Some keys carry a numeric suffix. The suffix is **not** interpreted by
-``kine``: it is only a naming convention used by ``example_dynamic_imaging.py``,
-in which ``_0``, ``_1`` and ``_2`` label the three rounds of the
-multi-resolution pipeline (see :ref:`dynamic-imaging`). Each round rebuilds the
-grids, data products and training states at its own ``fov_uas_i`` and
-``npix_i``, and trains for ``initniter_i`` + ``niter_i`` iterations.
-
-All the other scripts train at a single resolution, ``npix``, and re-sample the
-trained network at ``npix_out`` when writing the output.
 
 Parameters by scenario
 ----------------------
@@ -78,9 +64,9 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
    * - ``min_bl``
-     - (unused)
-     - (unused)
-     - (unused)
+     -
+     -
+     -
      - ✓
      - ✓
    * - ``fov_uas``
@@ -138,7 +124,7 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ``_0 _1 _2``
      - ✓
    * - ``nposenc``
-     - ✓ (2 entries)
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -174,19 +160,10 @@ Keys defined by each parameter file shipped in ``parameters/``
      -
      - ✓
 
-.. note::
-
-   ``min_bl`` is defined in the static, spectral and multi-epoch parameter
-   files for symmetry, but those scripts image whole observations rather than
-   time snapshots and never read it. It is only used by the scripts that call
-   :meth:`~kine.obsdata.Obsdata.split_obs` or
-   :meth:`~kine.obsdata.Obsdata.get_lightcurve`.
-
-
 Data Preprocessing
 ------------------
 
-See :doc:`user_guide` block 3 for the preprocessing chain these keys drive.
+See also :doc:`user_guide` block 3.
 
 .. list-table::
    :header-rows: 1
@@ -220,11 +197,9 @@ See :doc:`user_guide` block 3 for the preprocessing chain these keys drive.
      - ``4``
      - Minimum number of **stations** required in a time snapshot, passed to
        :meth:`~kine.obsdata.Obsdata.split_obs` and
-       :meth:`~kine.obsdata.Obsdata.get_lightcurve`. Internally this is
-       converted to a minimum number of visibilities,
-       ``min_bl * (min_bl - 1) / 2``, and snapshots with fewer are dropped.
-       Set to ``3`` when imaging with closure phases and ``4`` when imaging
-       with closure amplitudes; ``0`` disables the cut.
+       :meth:`~kine.obsdata.Obsdata.get_lightcurve`. Snapshots with fewer are 
+       dropped. Set to ``3`` when imaging with closure phases and ``4`` when 
+       imaging with closure amplitudes; ``0`` disables the cut.
 
 **Time flagging example:**
 
@@ -236,7 +211,7 @@ See :doc:`user_guide` block 3 for the preprocessing chain these keys drive.
      out: flagged   # 'flagged' keeps the data inside [t0, t1]
                     # 'kept'    keeps the data outside [t0, t1]
 
-.. warning::
+.. Note::
 
    The ``out`` key follows ``ehtim``'s convention, in which the UT window is
    what gets *flagged*: ``output='kept'`` returns the data that survive the
@@ -249,7 +224,7 @@ See :doc:`user_guide` block 3 for the preprocessing chain these keys drive.
 Coordinates and Resolution
 --------------------------
 
-See :doc:`user_guide` block 4.
+See also :doc:`user_guide` block 4.
 
 .. list-table::
    :header-rows: 1
@@ -278,13 +253,7 @@ See :doc:`user_guide` block 4.
      - int
      - ``200``
      - Resolution the trained network is re-sampled at when the final image,
-       video or cube is written (:doc:`user_guide` block 10). Because the
-       neural field is continuous, this can be larger than ``npix`` at no
-       extra training cost. Used by ``example_static_imaging.py``,
-       ``example_spectral_imaging.py`` and
-       ``example_multiepoch_imaging.py``; ``example_dynamic_imaging.py``
-       writes its output at the ``npix_2`` of its last round, and
-       ``example_dynamic_imaging_pol.py`` writes at ``npix``.
+       video or cube is written (:doc:`user_guide` block 10).
 
 .. note::
 
@@ -298,7 +267,7 @@ See :doc:`user_guide` block 4.
 Data Products
 -------------
 
-See :doc:`user_guide` block 5.
+See also :doc:`user_guide` block 5.
 
 .. list-table::
    :header-rows: 1
@@ -313,7 +282,7 @@ See :doc:`user_guide` block 5.
      - ``[logampI, cphaseI, logcampI]``
      - Data products entering the fit, as a list of string codes. One
        :math:`\chi^2` term is built per entry and all terms are summed with
-       equal weight. See :ref:`data-product-codes`.
+       equal weight.
 
 .. _data-product-codes:
 
@@ -339,17 +308,16 @@ the one exception and carries no letter.
      - Visibility amplitudes :math:`|V_{AB}|`
      - Immune to phase errors, sensitive to amplitude gains.
    * - ``logampI``
-     - :math:`\log|V_{AB}|`
+     - Log amplitudes :math:`\log|V_{AB}|`
      - As above, with better-behaved gradients over a wide dynamic range.
    * - ``cphaseI``
      - Closure phases :math:`\arg(V_{AB}V_{BC}V_{CA})`
      - Invariant under station-based phase errors. Carry no information on the
-       absolute source position, so the reconstruction may drift within the
-       frame — hence the disk initialization.
+       absolute source position.
    * - ``logcampI``
-     - Log closure amplitudes
+     - Log closure amplitudes :math:`\log|\frac{V_{AB}V_{BC}}{V_{CD}V_{DA}}|`
      - Invariant under station-based amplitude errors. Carry no information on
-       the total flux, hence the light-curve constraint.
+       the total flux.
    * - ``bsI``
      - Bispectra :math:`V_{AB}V_{BC}V_{CA}`
      - Alternative to closure phases, retaining amplitude information.

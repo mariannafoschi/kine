@@ -7,9 +7,6 @@ tavg: 60
 # Systematic noise
 syserr: 0.01
 
-# Minimum number of baselines per data snapshot
-min_bl: 0
-
 # Coordinates and data products
 # -----------------------------
 
