@@ -37,7 +37,8 @@ from . import utils as ut
 """
 
 class Image:
-    """
+    """A polarimetric image array with metadata.
+
     Attributes:
         npix: Number of pixels.
         fov: Field of view in radians.
@@ -220,8 +221,7 @@ class Image:
     def from_fits(
             self,
             inpath: str,
-            blur: float = 0,
-            fn: Callable | None = None
+            blur: float = 0
     ) -> None:
         """Create Image object from input fits file.
 
@@ -477,7 +477,8 @@ class Image:
             image.save_fits(outpath)
 
 class Video:
-    """
+    """A polarimetric video cube with metadata.
+
     Attributes:
         times: UT time in hours assigned to each video frame.
         dates: YYYY-MM-DD date assigned to each video frame.

@@ -4,16 +4,15 @@ utils
 **Hyperparameters and learning-rate schedules**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.utils.HyperParams
    ~kine.utils.Schedule
+   ~kine.utils.Schedule.exponential
 
 **Coordinate grids and time handling**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.utils.get_grid
@@ -23,7 +22,6 @@ utils
 **Array helpers**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.utils.list_to_jaxarr
@@ -36,21 +34,14 @@ utils
 **I/O and concurrency**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.utils.no_print
    ~kine.utils.init_worker
 
 .. autoclass:: kine.utils.HyperParams
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 .. autoclass:: kine.utils.Schedule
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 .. autofunction:: kine.utils.get_grid
 

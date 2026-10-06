@@ -6,10 +6,10 @@ API Reference
 
 The ``kine`` package is organized into five modules:
 
-- **obsdata** : the module is an expansion of ``eht-imaging``'s `Obsdata` class for manipulation of VLBI data. It inherits all attributes and methods from the original class, while adding new methods for data processing with ``kine``. An `obsdata` object contains data and metadata pertaining to a VLBI observation dataset.
+- **obsdata** : the module is an expansion of ``eht-imaging``'s :class:`ehtim.obsdata.Obsdata` class for manipulation of VLBI data. It inherits all attributes and methods from the original class, while adding new methods for data processing with ``kine``. An :class:`~kine.obsdata.Obsdata` object contains data and metadata pertaining to a VLBI observation dataset.
 - **model** : the module defines the neural networks that model the source and the learnable parameters that model complex gains.
-- **video** : the module defines the 'image' and 'video' classes, which consists of a polarimetric image or video array and associated metadata. Methods of the class include plotting and saving routines.
-- **trainer** : the module defines the jax training state and the different loss function terms.
+- **video** : the module defines the :class:`~kine.video.Image` and :class:`~kine.video.Video` classes, which consist of a polarimetric image or video array and associated metadata. Methods of the class include plotting and saving routines.
+- **trainer** : the module defines the JAX training state and the different loss function terms.
 - **utils** : the module contains various helper functions, including functions related to optimization hyperparameters, domain coordinates, and data formatting.
 
 

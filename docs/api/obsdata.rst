@@ -1,16 +1,19 @@
 obsdata
 =======
 
-The :class:`~kine.obsdata.Obsdata` class extends `ehtim's Obsdata
-<https://github.com/achael/eht-imaging/blob/main/ehtim/obsdata.py>`_ with
-methods tailored to ``kine``'s neural-field training pipeline: flagging,
-normalization, time splitting, light-curve extraction, and packing of
-visibilities and closure quantities into JAX-friendly arrays.
+The :class:`~kine.obsdata.Obsdata` class extends
+:class:`ehtim.obsdata.Obsdata` with methods tailored to ``kine``'s
+neural-field training pipeline: flagging, normalization, time splitting,
+light-curve extraction, and packing of visibilities and closure quantities
+into JAX-friendly arrays.
+
+Only the ``kine``-specific additions are listed below. Every attribute and
+method of the ``ehtim`` base class remains available; follow the ``Bases:``
+link at the bottom of this page for those.
 
 **Loading and merging observations**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.load_uvfits
@@ -19,7 +22,6 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Cleaning and flagging**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.flag_empty
@@ -33,17 +35,16 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Normalization and multi-epoch alignment**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.get_zbl
    ~kine.obsdata.Obsdata.norm_to_max
    ~kine.obsdata.Obsdata.fix_multiepoch
+   ~kine.obsdata.Obsdata.fix_multifreq
 
 **Time splitting and light curves**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.split_obs
@@ -52,7 +53,6 @@ visibilities and closure quantities into JAX-friendly arrays.
 **Data product packing**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.obsdata.Obsdata.get_data
@@ -65,6 +65,3 @@ visibilities and closure quantities into JAX-friendly arrays.
    ~kine.obsdata.Obsdata.set_gains_vars
 
 .. autoclass:: kine.obsdata.Obsdata
-   :members:
-   :undoc-members:
-   :show-inheritance:

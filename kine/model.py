@@ -39,8 +39,8 @@ def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
         \\frac{2}{\\pi}}\\left(sx + 0.044715\, x^3\\right)\\right)\\right)
 
     Args:
-        x (ArrayLike): input array.
-        s (float): sharpness factor.
+        x: Input array.
+        s: Sharpness factor.
     
     Returns:
         Output array.
@@ -65,9 +65,9 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
     :math:`\\sin([x, x+\\pi/2])`.
 
     Args:
-        x (ArrayLike): Variable to be encoded. Input x should be in 
-                       :math:`[-\\pi, \\pi]`.
-        deg (tuple[int]): The degree of the encoding.
+        x: Variable to be encoded. Input x should be in
+            :math:`[-\\pi, \\pi]`.
+        degs: The degree of the encoding.
 
     Returns:
         Encoded variables.
@@ -181,8 +181,8 @@ class NeuralFieldPol(nn.Module):
     Args:
         posenc_deg: Degrees of positional encoding
         outdim: Output layer dimension
-        depth (int): Number of hidden layers
-        width (int): Number of neurons in each hidden layer
+        depth: Number of hidden layers
+        width: Number of neurons in each hidden layer
         activ: Activation function for hidden layers
         outactiv: Output activation function
         outshift: Output activation function shift
@@ -252,7 +252,7 @@ class AmplitudeGains(nn.Module):
     Args:
         lower: Gains values lower limit.
         upper: Gains values upper limit.
-        nsite: Number of telescopes.
+        nsites: Number of telescopes.
         ntimes: Number of time segments over which gains are computed.
     """
 
@@ -307,8 +307,8 @@ class PhaseGains(nn.Module):
     """Multi-dimensional tunable parameter modeling phase gains.
     
     Args:
-        nsite (int): Number of telescopes.
-        ntimes (int): Number of time segments over which gains are computed.
+        nsites: Number of telescopes.
+        ntimes: Number of time segments over which gains are computed.
     """
 
     nsites: int = 8
@@ -358,7 +358,7 @@ class _ComplexGains(nn.Module):
     Args:
         lower: Gain lower value allowed.
         upper: Gain upper value allowed.
-        nsite: Number of telescopes.
+        nsites: Number of telescopes.
         ntimes: Number of time segments over which gains are computed.
     """
 

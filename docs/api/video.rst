@@ -1,4 +1,3 @@
-
 video
 =====
 
@@ -18,7 +17,6 @@ Video
 **Construction from training output**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video
@@ -30,7 +28,6 @@ Video
 **Adding ancillary components**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.add_tophat
@@ -41,7 +38,6 @@ Video
 **Plotting**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.plot
@@ -51,7 +47,6 @@ Video
 **Saving and exporting**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Video.save_gains
@@ -59,9 +54,6 @@ Video
    ~kine.video.Video.save_h5
 
 .. autoclass:: kine.video.Video
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 Image
 -----
@@ -69,7 +61,6 @@ Image
 **Construction from training output**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Image
@@ -80,7 +71,6 @@ Image
 **Adding ancillary components**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Image.add_tophat
@@ -91,7 +81,6 @@ Image
 **Plotting**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Image.plot
@@ -100,13 +89,8 @@ Image
 **Saving and exporting**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.video.Image.save_fits
 
 .. autoclass:: kine.video.Image
-   :members:
-   :undoc-members:
-   :show-inheritance:
-

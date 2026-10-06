@@ -36,8 +36,20 @@ def no_print():
             yield
 
 class HyperParams:
-    """Create a class object to store hyperparameters."""
+    """Create a class object to store hyperparameters.
+
+    Every key of the input dictionary becomes an attribute, so that
+    ``params['npix']`` can be read as ``hyperparams.npix``. Which keys are
+    expected depends on the imaging mode; see the parameter reference in
+    the documentation.
+    """
     def __init__(self, params: dict) -> None:
+        """Initialize class attributes.
+
+        Args:
+            params: Hyperparameters, typically read from a YAML parameter
+                file. Each key is set as an attribute of the object.
+        """
         self.__dict__.update(params)
 
 class Schedule:
@@ -52,6 +64,13 @@ class Schedule:
         * Add more custom schedules
     """
     def __init__(self, lr_i: float, lr_f: float, niter: int) -> None:
+        """Initialize class attributes.
+
+        Args:
+            lr_i: Initial learning rate.
+            lr_f: Final learning rate.
+            niter: Number of training iterations.
+        """
         self.lr_i: float = lr_i
         self.lr_f: float = lr_f
         self.niter: int = niter
@@ -82,13 +101,29 @@ def init_worker(fn: Callable, *args) -> None:
     t.start()
 
 def list_to_jaxarr(*args) -> Array | list[Array]:
-    """Convert a list of arguments to JAX arrays."""
+    """Convert a list of arguments to JAX arrays.
+
+    Args:
+        *args: Array-like objects to convert.
+
+    Returns:
+        A single JAX array if one argument is given, otherwise a list with
+        one JAX array per argument.
+    """
     if len(args) == 1:
         return jnp.array(args[0])
     return [jnp.array(arg) for arg in args]
 
 def to_complex(arr: ArrayLike) -> Array:
-    """Turn real-valued JAX array to complex type."""
+    """Turn real-valued JAX array to complex type.
+
+    Args:
+        arr: Real-valued input array.
+
+    Returns:
+        Complex-valued array with zero imaginary part and a trailing axis
+        of length one appended, as expected by the visibility operators.
+    """
     return jax.lax.complex(arr, jnp.zeros_like(arr))[..., None]
 
 def stack_and_pad(arr: list[ArrayLike]) -> Array:
@@ -141,7 +176,16 @@ def pad(arr: list[ArrayLike]) -> Array:
     return jnp.array(arr)
 
 def map_val_to_ind(arr1: ArrayLike, arr2: ArrayLike) -> Array:
-    """Map arr2 values to indices in arr1."""
+    """Map arr2 values to indices in arr1.
+
+    Args:
+        arr1: Reference array whose positions define the indices.
+        arr2: Array of values to look up in `arr1`.
+
+    Returns:
+        For each value of `arr2`, the index of its first match along the
+        second axis of `arr1`.
+    """
     arr1 = arr1[:, :, None]
     arr2 = arr2[:, None, :]
     mask = arr1 == arr2
@@ -344,6 +388,10 @@ def get_static_flux(
         found_flux: Flux density found through regularization.
         min_lcurve: Light-curve minimum value.
         min_flux_offset: Offset from light-curve minimum.
+
+    Returns:
+        Static flux density, capped so that it stays at least
+        `min_flux_offset` below the light-curve minimum.
     """
     if found_flux < 0.95:
         if found_flux <= (min_lcurve - min_flux_offset):

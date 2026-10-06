@@ -39,15 +39,21 @@ class Obsdata(eh.obsdata.Obsdata):
     and adds new helpfuls methods for data processing with `kine`.
 
     See Also:
-        eh.obsdata.Obsdata: Base class providing core functionality.
-        See https://github.com/achael/eht-imaging/blob/main/ehtim/obsdata.py
+        ehtim.obsdata.Obsdata: Base class providing core functionality.
     """
 
     def get_zbl(self, mode: str = 'max') -> float:
         """Get shortest baseline flux density.
-        
+
+        Args:
+            mode: How to combine the amplitudes measured on the shortest
+                baseline, either ``'max'`` or ``'median'``.
+
         Returns:
-            Maximum visibility amplitude of shortest baseline.
+            Maximum (or median) visibility amplitude of the shortest baseline.
+
+        Raises:
+            ValueError: If `mode` is neither ``'max'`` nor ``'median'``.
         """
         # Save amp and restore (avoids bugs with amp chi2 computation)
         amp_backup = self.amp

@@ -4,7 +4,6 @@ model
 **Neural fields**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.model.NeuralField
@@ -13,42 +12,29 @@ model
 **Telescope gain modules**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.model.AmplitudeGains
+   ~kine.model.AmplitudeGains.clipping
    ~kine.model.PhaseGains
+   ~kine.model.PhaseGains.clipping
 
 **Activation and encoding helpers**
 
 .. autosummary::
-   :toctree: generated
    :nosignatures:
 
    ~kine.model.posenc
    ~kine.model.sharpgelu
-   
+
 .. autoclass:: kine.model.NeuralField
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 .. autoclass:: kine.model.NeuralFieldPol
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 .. autoclass:: kine.model.AmplitudeGains
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 .. autoclass:: kine.model.PhaseGains
-   :members:
-   :special-members: __call__
-   :exclude-members: clipping
 
 .. autofunction:: kine.model.posenc
    
 .. autofunction:: kine.model.sharpgelu
-

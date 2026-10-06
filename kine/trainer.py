@@ -32,10 +32,12 @@ from . import utils as ut
 
 
 NPIX: int = 0
-"""Global variable required for NUFFT computations.
+"""Number of pixels per image side, as seen by the NUFFT loss terms.
 
-This is currently the best way I've found for passing this value
-to a @jax.jit function. NPIX should be updated from main. See examples.
+The value has to be visible to :func:`jax.jit`-compiled code as a
+compile-time constant, so it is kept as a module-level global rather than
+passed as an argument. Set it from the main script (``kine.trainer.NPIX =
+npix``) before the first training step; see the example scripts.
 """
 
 
@@ -46,8 +48,8 @@ class Trainer(train_state.TrainState):
     In addition, all functions related to training, like loss functions,
     are included here as (mostly private) static methods for consistency.
 
-    Args:
-        batch_stats: Batch normalization statistics
+    Attributes:
+        batch_stats: Batch normalization statistics.
     """
 
     batch_stats: Any | None = None
@@ -90,6 +92,25 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn_red(*args, **kwargs):
+        """Run the selected loss and reduce its batch normalization updates.
+
+        This is the function handed to :func:`jax.value_and_grad` by
+        :meth:`train_step`. It calls :meth:`_which_loss_fn` and averages each
+        returned collection of batch-norm statistics over its leading
+        (batch) axis.
+
+        Args:
+            *args: Network parameters, batch normalization statistics and
+                apply functions, in the order assembled by
+                :meth:`train_step`.
+            **kwargs: Training data and options; the keys present decide
+                which loss is used, see :meth:`_which_loss_fn`.
+
+        Returns:
+            The total loss and an auxiliary tuple holding the reduced
+            batch-norm updates, the per-term loss dictionary and the
+            network outputs.
+        """
         loss, (*updates, ldict, video) = Trainer._which_loss_fn(
             *args, **kwargs
         )
@@ -99,7 +120,39 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _which_loss_fn(*args, **kwargs):
-        """Select the loss function based on the input arguments."""
+        """Select the loss function based on the input arguments.
+
+        The loss is chosen from the keys that are *present* in `kwargs`
+        rather than from an explicit argument, so that the choice is a
+        compile-time constant under :func:`jax.jit`. Keys are tested in the
+        order below, so an earlier one wins:
+
+        ``init_arr``
+            :meth:`_loss_fn_init` -- initialize a 2D or 3D network.
+        ``init_vid_ml``
+            :meth:`_loss_fn_init_pol` -- initialize the polarimetric
+            channels only.
+        ``uvpoints``
+            :meth:`_loss_fn_nfft` -- dynamic imaging through the NUFFT.
+        ``init_vid_i``
+            :meth:`_loss_fn_pol` -- polarimetric imaging with Stokes I held
+            fixed.
+        ``grid``
+            :meth:`_loss_fn` -- static or dynamic imaging.
+        ``s_grid``
+            :meth:`_loss_fn_div_gains` when ``min_lcurve`` is also given
+            (the flux split is already assigned), otherwise
+            :meth:`_loss_fn_div_gains_fluxreg`.
+
+        Args:
+            *args: Network parameters, batch normalization statistics and
+                apply functions.
+            **kwargs: Training data and options.
+
+        Returns:
+            Whatever the selected loss function returns. ``None`` if no key
+            matches.
+        """
 
         # === Initialization losses ===========================================
 
@@ -140,7 +193,22 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn_init(*args, **kwargs):
-        """Loss function for initializing a general 2D or 3D network."""
+        """Loss function for initializing a general 2D or 3D network.
+
+        Fits the network output directly to a target array, without going
+        through any data product. The number of polarization channels is
+        taken from the width of the network output: 1 gives Stokes I only,
+        4 gives ``(I, ml, xi)`` and 5 adds ``mc``.
+
+        Args:
+            *args: ``(params, batch_stats, apply_fn)`` of the network.
+            **kwargs: Must contain ``grid`` (the coordinates to evaluate)
+                and ``init_arr`` (the target array).
+
+        Returns:
+            The summed mean squared error over the polarization channels,
+            and an auxiliary tuple ``(updates, None, (netout,))``.
+        """
         # Unpack state
         params, batch_stats, apply_fn = args
         # Unpack kwargs
@@ -177,8 +245,21 @@ class Trainer(train_state.TrainState):
         
     @staticmethod
     def _loss_fn_init_pol(*args, **kwargs):
-        """Loss function for initializing a general network for Stokes Q and U 
-        only, useful when Stokes I is fixed (given)."""
+        """Loss function for initializing the polarimetric channels only.
+
+        Same as :meth:`_loss_fn_init` but for ``ml`` and ``xi`` alone,
+        which is what is needed when Stokes I is given and held fixed.
+
+        Args:
+            *args: ``(params, batch_stats, apply_fn)`` of the network.
+            **kwargs: Must contain ``grid``, ``init_vid_ml`` and
+                ``init_vid_x`` (the target linear polarization fraction and
+                EVPA).
+
+        Returns:
+            The summed mean squared error over ``ml`` and ``xi``, and an
+            auxiliary tuple ``(updates, None, (video,))``.
+        """
         # Unpack states
         params, batch_stats, apply_fn = args
         # Unpack kwargs
@@ -216,7 +297,22 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn_nfft(*args, **kwargs):
-        """Loss function for training a general dynamic network using NUFFT."""
+        """Loss function for training a dynamic network through the NUFFT.
+
+        Evaluates the network on `grid`, transforms each frame with a
+        :func:`jax.vmap`-parallelized NUFFT, and accumulates one
+        :math:`\\chi^2` per requested data product plus the light-curve
+        regularizer. Requires :data:`NPIX` to be set.
+
+        Args:
+            *args: ``(params, batch_stats, apply_fn)`` of the network.
+            **kwargs: ``data``, ``grid``, ``lcurve``, ``uvpoints``,
+                ``pulsefac``, ``uvind``, ``triangles`` and ``quadrangles``.
+
+        Returns:
+            The total loss and an auxiliary tuple ``(updates, ldict,
+            (video,))``, where ``ldict`` holds the individual loss terms.
+        """
 
         # TODO: Add support for polarimetric channels
 
@@ -265,7 +361,22 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn(*args, **kwargs):
-        """Loss function for training a general 2D or 3D network."""
+        """Loss function for training a general 2D or 3D network.
+
+        The polarization channels are reconstructed from the network output
+        as :math:`Q = -I\\,m_l\\cos(2\\xi)`,
+        :math:`U = I\\,m_l\\sin(2\\xi)` and :math:`V = I\\,m_c`, then one
+        :math:`\\chi^2` is accumulated per requested data product. The
+        light-curve regularizer is added when ``lcurve`` is not ``None``.
+
+        Args:
+            *args: ``(params, batch_stats, apply_fn)`` of the network.
+            **kwargs: ``data``, ``grid`` and ``lcurve``.
+
+        Returns:
+            The total loss and an auxiliary tuple ``(updates, ldict,
+            (netout,))``.
+        """
         # Unpack state
         params, batch_stats, apply_fn = args
         # Unpack kwargs
@@ -320,8 +431,22 @@ class Trainer(train_state.TrainState):
     
     @staticmethod
     def _loss_fn_pol(*args, **kwargs):
-        """Loss function for training a general dynamic network
-        for Stokes Q and U having Stokes I fixed."""
+        """Loss function for polarimetric imaging with Stokes I held fixed.
+
+        Fits ``ml`` and ``xi`` against the polarimetric data products while
+        Stokes I is given by ``init_vid_i``. Adds
+        :meth:`_loss_ml_overlap` so that linear polarization stays where
+        there is total intensity.
+
+        Args:
+            *args: ``(params, batch_stats, apply_fn)`` of the network.
+            **kwargs: ``data``, ``grid`` and ``init_vid_i`` (the fixed
+                Stokes I video).
+
+        Returns:
+            The total loss and an auxiliary tuple ``(updates, ldict,
+            (video,))``.
+        """
         # Unpack states
         params, batch_stats, apply_fn = args
         # Unpack kwargs
@@ -364,8 +489,27 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn_div_gains(*args, **kwargs):
-        """Loss function for training a static and dynamic network
-        with gain corrections."""
+        """Loss function for the static + dynamic decomposition, with gains.
+
+        Trains two networks at once -- a time-independent (static) and a
+        time-variable (dynamic) component -- together with the amplitude and
+        phase gain modules. The flux split between the two components is
+        taken as given through ``min_lcurve``. See
+        :meth:`_loss_fn_div_gains_fluxreg` for the variant that learns the
+        split instead.
+
+        Args:
+            *args: Parameters, batch normalization statistics and apply
+                functions of the static network, the dynamic network and
+                the two gain modules.
+            **kwargs: ``data``, ``s_grid``, ``d_grid``, ``lcurve``,
+                ``min_lcurve``, ``bl_indx`` and the regularizer weights
+                (``w_border`` and friends).
+
+        Returns:
+            The total loss and an auxiliary tuple ``(s_updates, d_updates,
+            ldict, (static, dynamic, video))``.
+        """
         # Unpack states
         s_params, d_params, ag_params, pg_params, \
         s_batch_stats, d_batch_stats, s_apply_fn, \
@@ -432,8 +576,25 @@ class Trainer(train_state.TrainState):
     
     @staticmethod
     def _loss_fn_div_gains_fluxreg(*args, **kwargs):
-        """Loss function for training a static and dynamic network
-        while finding the static flux density through regularization."""
+        """Static + dynamic decomposition with a regularized flux split.
+
+        As :meth:`_loss_fn_div_gains`, but the static flux density is not
+        given: it is pushed towards its value by the ``min_dyn``
+        regularizer, which minimizes the persistent flux left in the
+        dynamic component, so that time-constant emission accumulates in
+        the static network.
+
+        Args:
+            *args: Parameters, batch normalization statistics and apply
+                functions of the static network, the dynamic network and
+                the two gain modules.
+            **kwargs: ``data``, ``s_grid``, ``d_grid``, ``bl_indx`` and the
+                regularizer weights.
+
+        Returns:
+            The total loss and an auxiliary tuple ``(s_updates, d_updates,
+            ldict, (static, dynamic, video))``.
+        """
         # Unpack states
         s_params, d_params, ag_params, pg_params, \
             s_batch_stats, d_batch_stats, s_apply_fn, \
@@ -492,9 +653,28 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_fn_div_gains_fluxpar(*args, **kwargs):
+        """Static + dynamic decomposition with a learnable flux ratio.
+
+        As :meth:`_loss_fn_div_gains`, but the flux split is an explicit
+        learnable parameter, carried by an extra
+        ``kine.model._StaticFluxDensity`` module.
+
+        Note:
+            Not currently reachable: :meth:`_which_loss_fn` does not select
+            this loss. It is kept for experiments with an explicitly fitted
+            flux ratio.
+
+        Args:
+            *args: Parameters, batch normalization statistics and apply
+                functions of the static network, the dynamic network, the
+                flux density module and the two gain modules.
+            **kwargs: ``data``, ``s_grid``, ``d_grid``, ``bl_indx`` and the
+                regularizer weights.
+
+        Returns:
+            The total loss and an auxiliary tuple ``(s_updates, d_updates,
+            ldict, (static, dynamic, video))``.
         """
-        Loss function for training a static and dynamic network
-        with gain corrections and learnable flux ratio."""
         # Unpack states
         s_params, d_params, fd_params, ag_params, pg_params, \
             s_batch_stats, d_batch_stats, s_apply_fn, d_apply_fn, \
@@ -571,8 +751,30 @@ class Trainer(train_state.TrainState):
         pg_params,
         bl_indx
     ):
-        """Select which gain correction to apply based onthe data products
-        used for imaging."""
+        """Apply the fitted gains to the measured data.
+
+        The gains are applied to the *data* rather than to the model, so
+        that the comparison is made in the corrupted frame. Which
+        correction is used follows from the data products being fitted:
+        amplitude gains alone for ``ampI``/``logampI``, amplitude and phase
+        gains for ``visI``.
+
+        Args:
+            data: Data products dictionary, as built by
+                :meth:`~kine.obsdata.Obsdata.get_data`.
+            ag_apply_fn: Apply function of the
+                :class:`~kine.model.AmplitudeGains` module.
+            ag_params: Parameters of the amplitude gain module.
+            pg_apply_fn: Apply function of the
+                :class:`~kine.model.PhaseGains` module.
+            pg_params: Parameters of the phase gain module.
+            bl_indx: Per-baseline site indices, from
+                :meth:`~kine.obsdata.Obsdata.set_gains_vars`.
+
+        Returns:
+            The gain-corrected target amplitudes or complex visibilities,
+            or ``None`` if no gain-correctable data product is present.
+        """
         if any(x in data for x in ['ampI', 'logampI']):
             dtype = 'ampI' if 'ampI' in data else 'logampI'
             frames = jnp.arange(len(data[dtype]['target']), dtype=int)
@@ -590,7 +792,29 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_chi(video, data, dtype, **kwargs):
-        """Compute loss for a given data product."""
+        """Dispatch to the loss term matching a data product and imaging mode.
+
+        Three variants exist per data product: ``_2d`` for static imaging
+        (no ``padmask`` in `data`), ``_3d`` for dynamic imaging, and
+        ``_3d_nfft`` for dynamic imaging through the NUFFT. In the NUFFT
+        case the visibilities, closure phases and log closure amplitudes
+        are computed here before being handed to the leaf term.
+
+        Args:
+            video: Complex image or video array evaluated by the network.
+            data: Data product dictionary, holding at least ``target``,
+                ``sigma`` and either ``A`` (the Fourier operator) or
+                ``padmask``.
+            dtype: Data product name without its trailing polarization
+                letter, e.g. ``'vis'``, ``'amp'``, ``'logamp'``,
+                ``'cphase'``, ``'logcamp'``, ``'bs'`` or ``'mbreve'``.
+            **kwargs: ``gain_corr_data`` for the direct Fourier transform
+                path, or ``uv``, ``pulses``, ``uvind``, ``tria`` and
+                ``quad`` for the NUFFT path.
+
+        Returns:
+            The :math:`\\chi^2` of that data product.
+        """
         # Check if static (no padmask) or dynamic imaging
         if 'padmask' in data:
             # Check if using NUFFT
@@ -684,6 +908,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_vis_2d(image, data):
+        """Complex visibility :math:`\\chi^2` for a static image.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``.
+
+        Returns:
+            Mean squared visibility residual, in units of ``sigma``,
+            divided by two (one for each of the real and imaginary parts).
+        """
         vis = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
         return (
             jnp.mean(
@@ -693,6 +927,19 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_vis_3d(video, data, gvis):
+        """Complex visibility :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``
+                and ``padmask``.
+            gvis: Gain-corrected target visibilities from
+                :meth:`_loss_gains`, or ``None`` to compare against the
+                uncorrected ``target``.
+
+        Returns:
+            Padding-masked mean squared visibility residual, divided by two.
+        """
         gvis = data['target'] if gvis is None else gvis
         vis = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video
@@ -705,6 +952,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_vis_3d_nfft(vis, data):
+        """Complex visibility :math:`\\chi^2` for a video, NUFFT path.
+
+        Args:
+            vis: Visibilities already sampled by the NUFFT.
+            data: Data product dictionary with ``target``, ``sigma`` and
+                ``padmask``.
+
+        Returns:
+            Padding-masked mean squared visibility residual, divided by two.
+        """
         return (
             jnp.sum(
                 (jnp.abs(vis - data['target'])/data['sigma'])**2
@@ -714,6 +971,15 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_amp_2d(image, data):
+        """Visibility amplitude :math:`\\chi^2` for a static image.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``.
+
+        Returns:
+            Mean squared amplitude residual, in units of ``sigma``.
+        """
         amp = jnp.abs(
             jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
         )
@@ -725,6 +991,18 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_amp_3d(video, data, gamp):
+        """Visibility amplitude :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``
+                and ``padmask``.
+            gamp: Gain-corrected target amplitudes from
+                :meth:`_loss_gains`, or ``None`` to use ``target``.
+
+        Returns:
+            Padding-masked mean squared amplitude residual.
+        """
         gamp = data['target'] if gamp is None else gamp
         amp = jnp.abs(
             jax.lax.batch_matmul(data['A'][:, 0, ...], video).squeeze(axis=-1)
@@ -737,6 +1015,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_amp_3d_nfft(amp, data):
+        """Visibility amplitude :math:`\\chi^2` for a video, NUFFT path.
+
+        Args:
+            amp: Amplitudes already sampled by the NUFFT.
+            data: Data product dictionary with ``target``, ``sigma`` and
+                ``padmask``.
+
+        Returns:
+            Padding-masked mean squared amplitude residual.
+        """
         return (
             jnp.sum(
                 (jnp.abs(amp - data['target'])/data['sigma'])**2
@@ -745,7 +1033,43 @@ class Trainer(train_state.TrainState):
         )
 
     @staticmethod
+    def _loss_logamp_2d(image, data):
+        """Log visibility amplitude :math:`\\chi^2` for a static image.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``.
+
+        Returns:
+            Mean squared log-amplitude residual.
+        """
+        eps = 1e-12
+        sigma = data['sigma'] / data['target']
+        target = jnp.log(data['target'] + eps)
+        logamp = jnp.abs(
+            jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
+        )
+        logamp = jnp.log(logamp + eps)
+        return (
+            jnp.mean(
+                (jnp.abs(logamp - target)/sigma)**2
+            )
+        )
+
+    @staticmethod
     def _loss_logamp_3d(video, data, gamp):
+        """Log visibility amplitude :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``
+                and ``padmask``.
+            gamp: Gain-corrected target amplitudes from
+                :meth:`_loss_gains`, or ``None`` to use ``target``.
+
+        Returns:
+            Padding-masked mean squared log-amplitude residual.
+        """
         gamp = data['target'] if gamp is None else gamp
         data['sigma'] = data['sigma'] / gamp
         gamp = jnp.log(gamp + 1e-12)
@@ -761,6 +1085,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_logamp_3d_nfft(logamp, data):
+        """Log visibility amplitude :math:`\\chi^2` for a video, NUFFT path.
+
+        Args:
+            logamp: Log amplitudes already computed from the NUFFT output.
+            data: Data product dictionary with ``target``, ``sigma`` and
+                ``padmask``.
+
+        Returns:
+            Padding-masked mean squared log-amplitude residual.
+        """
         data['sigma'] = data['sigma'] / data['target']
         data['target'] = jnp.log(data['target'] + 1e-12)
         return (
@@ -772,6 +1106,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_logcamp_2d(image, data):
+        """Log closure amplitude :math:`\\chi^2` for a static image.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary whose ``A`` holds the four
+                Fourier operators of each quadrangle.
+
+        Returns:
+            Mean squared log closure amplitude residual.
+        """
         vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
         vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
         vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
@@ -788,6 +1132,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_logcamp_3d(video, data):
+        """Log closure amplitude :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary whose ``A`` holds the four
+                Fourier operators of each quadrangle, plus ``padmask``.
+
+        Returns:
+            Padding-masked mean squared log closure amplitude residual.
+        """
         vis1 = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video
         ).squeeze(axis=-1)
@@ -813,6 +1167,17 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_logcamp_3d_nfft(logcamp, data):
+        """Log closure amplitude :math:`\\chi^2` for a video, NUFFT path.
+
+        Args:
+            logcamp: Log closure amplitudes already formed from the NUFFT
+                output.
+            data: Data product dictionary with ``target``, ``sigma`` and
+                ``padmask``.
+
+        Returns:
+            Padding-masked mean squared log closure amplitude residual.
+        """
         return (
             jnp.sum(
                 (jnp.abs(logcamp - data['target'])/data['sigma'])**2
@@ -822,6 +1187,20 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_cphase_2d(image, data):
+        """Closure phase :math:`\\chi^2` for a static image.
+
+        Uses the angular form :math:`2(1 - \\cos\\Delta\\phi)/\\sigma^2`, which
+        is well behaved across the :math:`\\pm\\pi` wrap. ``target`` and
+        ``sigma`` are converted from degrees to radians in place.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary whose ``A`` holds the three
+                Fourier operators of each triangle.
+
+        Returns:
+            Mean closure phase :math:`\\chi^2`.
+        """
         data['target'] = jnp.deg2rad(data['target'])
         data['sigma'] = jnp.deg2rad(data['sigma'])
         vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
@@ -836,6 +1215,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_cphase_3d(video, data):
+        """Closure phase :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary whose ``A`` holds the three
+                Fourier operators of each triangle, plus ``padmask``.
+
+        Returns:
+            Padding-masked closure phase :math:`\\chi^2`.
+        """
         data['target'] = jnp.deg2rad(data['target'])
         data['sigma'] = jnp.deg2rad(data['sigma'])
         vis1 = jax.lax.batch_matmul(
@@ -857,6 +1246,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_cphase_3d_nfft(cphase, data):
+        """Closure phase :math:`\\chi^2` for a video, NUFFT path.
+
+        Args:
+            cphase: Closure phases already formed from the NUFFT output.
+            data: Data product dictionary with ``target``, ``sigma`` and
+                ``padmask``.
+
+        Returns:
+            Padding-masked closure phase :math:`\\chi^2`.
+        """
         data['target'] = jnp.deg2rad(data['target'])
         data['sigma'] = jnp.deg2rad(data['sigma'])
         return (
@@ -868,6 +1267,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_bs_2d(image, data):
+        """Bispectrum :math:`\\chi^2` for a static image.
+
+        Args:
+            image: Complex image array.
+            data: Data product dictionary whose ``A`` holds the three
+                Fourier operators of each triangle.
+
+        Returns:
+            Mean squared bispectrum residual, divided by two.
+        """
         vis1 = jax.lax.batch_matmul(data['A'][0, ...], image).squeeze(axis=-1)
         vis2 = jax.lax.batch_matmul(data['A'][1, ...], image).squeeze(axis=-1)
         vis3 = jax.lax.batch_matmul(data['A'][2, ...], image).squeeze(axis=-1)
@@ -880,6 +1289,16 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_bs_3d(video, data):
+        """Bispectrum :math:`\\chi^2` for a video.
+
+        Args:
+            video: Complex video array.
+            data: Data product dictionary whose ``A`` holds the three
+                Fourier operators of each triangle, plus ``padmask``.
+
+        Returns:
+            Padding-masked mean squared bispectrum residual, divided by two.
+        """
         vis1 = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video
         ).squeeze(axis=-1)
@@ -899,6 +1318,18 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_mbreve_2d(image, data):
+        """Complex polarization ratio :math:`\\breve{m}` :math:`\\chi^2`, static.
+
+        :math:`\\breve{m} = (\\tilde{Q} + i\\tilde{U})/\\tilde{I}` is formed
+        from the Stokes I, Q and U images.
+
+        Args:
+            image: Sequence of the Stokes I, Q and U image arrays.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``.
+
+        Returns:
+            Mean squared :math:`\\breve{m}` residual, divided by two.
+        """
         visI = jax.lax.batch_matmul(
             data['A'][0, ...], image[0]
         ).squeeze(axis=-1)
@@ -917,6 +1348,17 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_mbreve_3d(video, data):
+        """Complex polarization ratio :math:`\\breve{m}` :math:`\\chi^2`, dynamic.
+
+        Args:
+            video: Sequence of the Stokes I, Q and U video arrays.
+            data: Data product dictionary with ``A``, ``target``, ``sigma``
+                and ``padmask``.
+
+        Returns:
+            Padding-masked mean squared :math:`\\breve{m}` residual, divided
+            by two.
+        """
         visI = jax.lax.batch_matmul(
             data['A'][:, 0, ...], video[0]
         ).squeeze(axis=-1)
@@ -938,29 +1380,77 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_lcurve(lcurve, frames):
-        """Light-curve loss for a single image or a stack of frames."""
+        """Light-curve regularizer for a single image or a stack of frames.
+
+        Args:
+            lcurve: Target total flux density per frame.
+            frames: Image or video array whose frames are summed.
+
+        Returns:
+            Summed squared departure of the reconstructed flux from
+            `lcurve`.
+        """
         lcurve = jnp.atleast_1d(lcurve)
         flux = jnp.sum(jnp.real(frames).reshape(lcurve.shape[0], -1), axis=1)
         return jnp.sum((flux - lcurve)**2)
 
     @staticmethod
     def _loss_min_dynamics(dynamic):
+        """Persistent-flux regularizer for the dynamic component.
+
+        Penalizes emission that is present in every frame, so that
+        time-constant structure moves into the static component instead.
+
+        Args:
+            dynamic: Dynamic component video array.
+
+        Returns:
+            Regularizer value.
+        """
         return jnp.mean(
             jnp.sum(jnp.max(dynamic, axis=0))
         )
 
     @staticmethod
     def _loss_dynamic_flux(dynamic):
+        """Total flux regularizer for the dynamic component.
+
+        Args:
+            dynamic: Dynamic component video array, one row per frame.
+
+        Returns:
+            Mean squared departure of each frame's total flux from unity.
+        """
         return jnp.mean(
             (jnp.sum(dynamic, axis=1) - jnp.ones(dynamic.shape[0]))**2
         )
 
     @staticmethod
     def _loss_static_flux(static):
+        """Total flux regularizer for the static component.
+
+        Args:
+            static: Static component image array.
+
+        Returns:
+            Squared departure of the total flux from unity.
+        """
         return jnp.mean((jnp.sum(static) - 1.0)**2)
 
     @staticmethod
     def _loss_border(frame):
+        """Field-of-view regularizer.
+
+        Penalizes flux in a border of width ``NPIX // 20`` around each
+        frame, keeping the source away from the edges of the field of
+        view. Requires :data:`NPIX` to be set.
+
+        Args:
+            frame: Image or video array.
+
+        Returns:
+            Mean flux in the border region.
+        """
         frame = jnp.real(frame).reshape(-1, NPIX, NPIX)
         pad = NPIX // 20
         return jnp.mean(
@@ -970,6 +1460,20 @@ class Trainer(train_state.TrainState):
 
     @staticmethod
     def _loss_ml_overlap(larr, iarr, tau=0.1):
+        """Overlap regularizer between linear polarization and Stokes I.
+
+        Penalizes linear polarization where there is little total
+        intensity, with an exponential weight of scale `tau`.
+
+        Args:
+            larr: Linear polarization fraction array.
+            iarr: Stokes I array.
+            tau: Total intensity scale below which polarization is
+                suppressed.
+
+        Returns:
+            Regularizer value.
+        """
         return jnp.mean(
             jnp.abs(larr) * jnp.exp(-jnp.abs(iarr) / tau)
         )
