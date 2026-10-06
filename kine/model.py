@@ -177,7 +177,8 @@ class NeuralFieldPol(nn.Module):
     
     Predicts linear polarization emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
-    and fed to an MLP. We use batch normalization and skip connections.
+    and fed to an MLP. The architecture includes batch normalization and skip 
+    connections.
     
     Args:
         posenc_deg: Degrees of positional encoding
@@ -353,8 +354,7 @@ class PhaseGains(nn.Module):
 class _ComplexGains(nn.Module):
     """Multi-dimensional tunable parameter modeling complex gains.
 
-    Fitting for amplitude + phase gains
-    separately seems to work better currently.
+    Fitting for amplitude + phase gains separately seems to work better.
     
     Args:
         lower: Gain lower value allowed.
