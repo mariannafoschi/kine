@@ -23,13 +23,14 @@ The ``kine`` package is organized into five modules:
    * - :doc:`kine.obsdata <obsdata>`
      - Data handling, extending ``ehtim``'s ``Obsdata`` class.
    * - :doc:`kine.model <model>`
-     - Neural fields and learnable parameter modeling for source and gains.
+     - Neural fields models and learnable parameters for source and gains.
    * - :doc:`kine.video <video>`
-     - Video object, plotting and saving utilities.
+     - Image and video objects, plotting and saving utilities.
    * - :doc:`kine.trainer <trainer>`
      - Training state and loss function terms.
    * - :doc:`kine.utils <utils>`
-     - Various utilities, including grids, batching, schedules, data formatting.
+     - Various utilities, including coordinate grids, batching, schedules, data 
+       formatting.            
 
 .. toctree::
    :hidden:
