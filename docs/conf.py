@@ -77,7 +77,7 @@ napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
-napoleon_include_special_with_doc = True
+napoleon_include_special_with_doc = False  # `special-members` below decides
 napoleon_use_param = True
 napoleon_use_keyword = True
 napoleon_use_rtype = True
@@ -115,10 +115,12 @@ autodoc_inherit_docstrings = False
 # absent: autodoc keeps a special member only when it has a docstring, so
 # `__init__` is rendered for Image/Video (documented) and skipped for the
 # dataclass-generated constructors of the flax modules and of Trainer.
+# `__call__` is left out on purpose: the forward pass of the flax modules is
+# an implementation detail, not part of the documented API.
 autodoc_default_options = {
     'members': True,
     'show-inheritance': True,
-    'special-members': '__init__,__call__',
+    'special-members': '__init__',
     # `activ` and `outactiv` are flax dataclass fields whose default value is
     # a jax activation function. autodoc would otherwise document each of
     # them as a method of the neural field, docstring and all, pasting jax's
@@ -220,8 +222,23 @@ def _shorten_array_types(app, what, name, obj, options, signature,
     return fix(signature), fix(return_annotation)
 
 
+# The breeze theme only splits a signature over 60 characters one parameter
+# per line, so a short class (e.g. PhaseGains) would stay on a single line.
+# Force the multi-line layout on every class signature instead.
+def _multiline_class_signatures(app, doctree):
+    from sphinx import addnodes
+
+    for desc in doctree.findall(addnodes.desc):
+        if desc.get('domain') != 'py' or desc.get('objtype') != 'class':
+            continue
+        for sig in desc.findall(addnodes.desc_signature):
+            for params in sig.findall(addnodes.desc_parameterlist):
+                params['multi_line_parameter_list'] = True
+
+
 def setup(app):
     app.connect('autodoc-process-signature', _shorten_array_types)
+    app.connect('doctree-read', _multiline_class_signatures)
 
 
 # -- Source button
