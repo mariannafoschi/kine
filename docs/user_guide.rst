@@ -568,7 +568,10 @@ regression:
    \mathcal{L}_\mathrm{init} = \sum_{i,j}
    \left(I_\mathrm{init}(x_i, y_i) - \hat I_W(x_i, y_i, t_j)\right)^2,
 
-with no Fourier transform involved. When imaging with closure phases, which do
+with no Fourier transform involved. When the network also predicts polarization
+(``outdim`` of 4 or 5), the same squared difference is computed for
+:math:`m_\ell`, :math:`\chi` and, if present, :math:`m_c`, and summed with
+the Stokes I term. When imaging with closure phases, which do
 not constrain absolute position, the initialization helps constraining the 
 majority of the flux to the central area of the frame. 
 While it is important that the initialization has roughly the right total flux 
@@ -589,8 +592,33 @@ light-curve flux in each frame, from ``init_params``: ``fwhm`` (disk diameter in
 µas), ``blur`` (Gaussian blurring in µas), and ``posx``/``posy`` (offsets in
 pixels). The polarization channels can be initialized to constant values with 
 :meth:`~kine.video.Video.add_constant_linpol` /
-:meth:`~kine.video.Video.add_constant_circpol`. Alternatively the initialization video can be created from a chosen input file with `~kine.video.Video.from_h5` 
+:meth:`~kine.video.Video.add_constant_circpol`. Alternatively the initialization 
+video can be created from a chosen input file with :meth:`~kine.video.Video.from_h5` 
 or :meth:`~kine.video.Video.add_video_i` (for Stokes I only).
+
+**Polarimetric initialization.** When Stokes I is fitted together with linear
+polarization, the initialization target must stack the Stokes I, linear 
+polarization fraction and EVPA arrays along the last axis; for full polarization 
+the circular polarization fraction is appended as a fourth channel:
+
+.. code-block:: python
+
+   init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init_vid.add_tophat(lcurve, h.init_params)
+   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0)  # lin. pol.
+   init_vid.add_constant_circpol(circpolfrac=0.05)          # circ. pol.
+
+   init_arr = jnp.concatenate(
+       [init_vid.iarr, init_vid.larr, init_vid.xarr, init_vid.carr],  # drop carr for outdim=4
+       axis=-1
+   )
+
+The channel order is fixed to :math:`(I, m_\ell, \chi, m_c)`. Each array has
+shape ``(ntimes, npix, npix, 1)``, or ``(npix, npix, 1)`` for a
+:class:`kine.video.Image`.
+If Stokes I is instead held fixed and only the polarization is fitted with
+:class:`kine.model.NeuralFieldPol`, the targets are passed separately as
+``init_vid_ml`` and ``init_vid_x`` (see :ref:`polarimetric-imaging`).
 
 The initialization loop then looks exactly like a training loop (see point 9), 
 except that the target is an array of pixel values rather than a set of data 
@@ -608,7 +636,7 @@ products:
            odict(
                state=state,
                grid=grid,
-               init_arr=init_vid.iarr
+               init_arr=init_arr  # init_vid.iarr for Stokes I only
            )
        )
        lloss.append(loss)
@@ -1054,7 +1082,7 @@ The script runs blocks 4--10 three times, at increasing resolution:
 
 .. list-table::
    :header-rows: 1
-   :widths: 12 22 66
+   :widths: 12 88
 
    * - Step
      - Purpose
