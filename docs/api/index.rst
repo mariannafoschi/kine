@@ -15,7 +15,7 @@ The ``kine`` package is organized into five modules:
 
 .. list-table::
    :header-rows: 1
-   :widths: 35 70
+   :widths: 40 80
    :align: left
 
    * - Module
