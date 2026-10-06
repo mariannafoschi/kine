@@ -19,7 +19,19 @@ link at the bottom of this page for those.
    ~kine.obsdata.Obsdata.load_uvfits
    ~kine.obsdata.Obsdata.merge_obs
 
-**Cleaning and flagging**
+**Flux and time-split utilities**
+
+.. autosummary::
+   :nosignatures:
+
+   ~kine.obsdata.Obsdata.get_zbl
+   ~kine.obsdata.Obsdata.get_lightcurve
+   ~kine.obsdata.Obsdata.norm_to_max
+   ~kine.obsdata.Obsdata.fix_multiepoch
+   ~kine.obsdata.Obsdata.fix_multifreq
+   ~kine.obsdata.Obsdata.split_obs
+
+**Preprocessing**
 
 .. autosummary::
    :nosignatures:
@@ -32,25 +44,7 @@ link at the bottom of this page for those.
    ~kine.obsdata.Obsdata.avg_coherent
    ~kine.obsdata.Obsdata.add_fractional_noise
 
-**Normalization and multi-epoch alignment**
-
-.. autosummary::
-   :nosignatures:
-
-   ~kine.obsdata.Obsdata.get_zbl
-   ~kine.obsdata.Obsdata.norm_to_max
-   ~kine.obsdata.Obsdata.fix_multiepoch
-   ~kine.obsdata.Obsdata.fix_multifreq
-
-**Time splitting and light curves**
-
-.. autosummary::
-   :nosignatures:
-
-   ~kine.obsdata.Obsdata.split_obs
-   ~kine.obsdata.Obsdata.get_lightcurve
-
-**Data product packing**
+**Data information extraction**
 
 .. autosummary::
    :nosignatures:

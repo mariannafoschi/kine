@@ -10,8 +10,8 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 
 - **Static imaging**: reconstruct an image of the source from a single VLBI observation.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
-- **Multi-frequency imaging**: reconstruct the spectral dependence of the source across multiple frequencies.
-- **Multi-epoch imaging**: reconstruct a video of the source's evolution across multiple observations spanning days to years.
+- **Multi-epoch imaging**: reconstruct a video of the source across multiple observations spanning days to years.
+- **Spectral imaging**: reconstruct the spectral dependence of the source across multiple frequencies.
 
 ### Available features
 

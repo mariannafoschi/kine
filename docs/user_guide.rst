@@ -604,13 +604,13 @@ the circular polarization fraction is appended as a fourth channel:
 .. code-block:: python
 
    init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
-   init_vid.add_tophat(lcurve, h.init_params)               # tot. int.
-   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0)  # lin. pol.
-   init_vid.add_constant_circpol(circpolfrac=0.05)          # circ. pol.
+   init_vid.add_tophat(lcurve, h.init_params)              # tot. int.
+   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol.
+   init_vid.add_constant_circpol(circpolfrac=0.05)         # circ. pol.
 
-   init_arr = init_vid.iarr                                                          # Stokes I only
-   init_arr = jnp.concatenate([init_vid.iarr,init_vid.larr,init_vid.xarr], axis=-1)  # Stokes I,Q,U
-   init_arr = jnp.concatenate(                                                       # Stokes I,Q,U,V
+   init_arr = init_vid.iarr                                                         # Stokes I only
+   init_arr = jnp.concatenate([init_vid.iarr,init_vid.larr,init_vid.xarr], axis=-1) # Stokes I,Q,U
+   init_arr = jnp.concatenate(                                                      # Stokes I,Q,U,V
        [init_vid.iarr, init_vid.larr,init_vid.xarr,init_vid.carr], 
        axis=-1
    )  

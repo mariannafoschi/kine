@@ -42,6 +42,36 @@ class Obsdata(eh.obsdata.Obsdata):
         ehtim.obsdata.Obsdata: Base class providing core functionality.
     """
 
+    @classmethod
+    def load_uvfits(cls, inpath: str, **kwargs) -> Self:
+        """Wrapper for ehtim's obsdata loading function.
+
+        Args:
+            inpath: uvfits path.
+            **kwargs: ehtim's load_uvfits keyword arguments.
+
+        Returns:
+            Obsdata object.
+        """
+        obs = eh.obsdata.load_uvfits(inpath, **kwargs)
+        argl, argd = obs.obsdata_args()
+        return cls(*argl, **argd)
+
+    @classmethod
+    def merge_obs(cls, obslist: list[Self], **kwargs) -> Self:
+        """Wrapper for ehtim's merge obs function.
+
+        Args:
+            obslist: Snapshot Obsdata to be merged.
+            **kwargs: ehtim's merge_obs keyword arguments.
+        
+        Returns:
+            Merged Obsdata object.
+        """
+        obs = eh.obsdata.merge_obs(obslist, **kwargs)
+        argl, argd = obs.obsdata_args()
+        return cls(*argl, **argd)
+
     def get_zbl(self, mode: str = 'max') -> float:
         """Get shortest baseline flux density.
 
@@ -72,22 +102,59 @@ class Obsdata(eh.obsdata.Obsdata):
         else:
             raise ValueError("Invalid mode. Use 'max' or 'median'.")
 
-    def flag_empty(self) -> Self:
-        """Flag sites with no measurements.
+    def get_lightcurve(
+            self,
+            tavg: float = 0.0,
+            min_bl: int = 0,
+            uv_max: float | None = None,
+            times: list | None = None
+    ) -> Array:
+        """Extract interpolated light curve from intra-site baselines.
 
-        Obsdata sometimes include atennas with no data.
-        For instance, after time splitting. Remove those antennas.
-        
+        Args:
+            tavg: Snapshot duration (in seconds).
+            min_bl: Minimum number of baselines per snapshot.
+            uv_max: Maximum uv-distance allowed for flux density extraction.
+            times: Time stamps over which interpolate (optional).
+
         Returns:
-            Cleared Obsdata object.
+            Interpolated light-curve array.
         """
-        allsites = set(self.unpack(['t1'])['t1']) \
-                 | set(self.unpack(['t2'])['t2'])
-        self.tarr = self.tarr[[o in allsites for o in self.tarr['site']]]
-        # Re-build Obsdata object
-        argl, argd = self.obsdata_args()
-        return Obsdata(*argl, **argd)
-
+        with ut.no_print():
+            self.add_scans()
+            obs_split = self.split_obs(t_gather=tavg, min_bl=min_bl)
+        # Univariate spline interpolation
+        alltimes = np.array(
+            [obs_split[j].data['time'][0] for j in range(len(obs_split))]
+        )
+        if uv_max is None:
+            allfluxes = np.array(
+                [np.median(obs_split[j].get_zbl())
+                 for j in range(len(obs_split))]
+            )
+        else:
+            allfluxes = np.array(
+                [np.median(obs_split[j].flag_uvdist(uv_max=uv_max)\
+                                       .unpack('amp')['amp'])
+                for j in range(len(obs_split))]
+            )
+        # Sort by time
+        idxsort = np.argsort(alltimes)
+        alltimes = alltimes[idxsort]
+        allfluxes = allfluxes[idxsort]
+        # NaN masking
+        mask = np.isnan(allfluxes)
+        maskedtimes = alltimes[~mask]
+        maskedfluxes = allfluxes[~mask]
+        # Interpolation
+        spl = interp.UnivariateSpline(maskedtimes, maskedfluxes, ext=3)
+        spl.set_smoothing_factor(1e-10)
+        spl_times = alltimes
+        if times is not None:
+            spl_times = times
+        spl_fluxes = spl(spl_times)
+        return ut.list_to_jaxarr(spl_fluxes)
+        
     def norm_to_max(self) -> Self:
         """Normalize amplitudes to shortest baseline flux density.
 
@@ -148,36 +215,65 @@ class Obsdata(eh.obsdata.Obsdata):
         self.timetype = refobs.timetype
         self.polrep = refobs.polrep
     
-    def avg_coherent(self, tavg: float, scan_avg: bool = False) -> Self:
-        """Wrapper for ehtim's coherent time-averaging.
+    def split_obs(
+            self,
+            t_gather: float = 0.0,
+            scan_gather: bool = False,
+            min_bl: int = 0,
+            group: int = 0
+    ) -> list:
+        """Split observation wrapper to allow for 'grouping'
         
         Args:
-            tavg: Averaging time.
-            scan_avg: Whether to scan average data.
+            t_gather: Snapshot duration (in seconds).
+            scan_gather: If true, gather data into scans.
+            min_bl: Minimum number of baselines allowed per snapshot.
+            group: Number of adjacent snapshot to group.
         
         Returns:
-            Coherently time-averaged Obsdata object.
+            List of snapshot Obsdata objects.
         """
-        obs = super().avg_coherent(tavg, scan_avg=scan_avg)
+        # Suppress ehtim's printing
+        with ut.no_print():
+            glist = super().split_obs(
+                t_gather=t_gather,
+                scan_gather=scan_gather
+            )
+            glist = [Obsdata(*ob.obsdata_args()[0], **ob.obsdata_args()[1])
+                     for ob in glist]
+        # Drop snapshots with less baselines than specified
+        if min_bl > 0:
+            nvis = min_bl * (min_bl-1) / 2
+            glist = [ob for ob in glist if len(ob.data) >= nvis]
+        # Group observations
+        if group > 0:
+            # Pad list of observations
+            ini = [glist[0]] * group
+            fin = [glist[-1]] * group
+            glist = ini + glist + fin
+            # Group multiple observations
+            glist = [glist[i-group : i+group+1]
+                     for i in np.arange(group, len(glist)-group)]
+            glist = [self.merge_obs(g) for g in glist]
+        print(f'Splitting Observation File into {len(glist)} times')
+        return glist
+    
+    def flag_empty(self) -> Self:
+        """Flag sites with no measurements.
+
+        Obsdata sometimes include atennas with no data.
+        For instance, after time splitting. Remove those antennas.
+        
+        Returns:
+            Cleared Obsdata object.
+        """
+        allsites = set(self.unpack(['t1'])['t1']) \
+                 | set(self.unpack(['t2'])['t2'])
+        self.tarr = self.tarr[[o in allsites for o in self.tarr['site']]]
         # Re-build Obsdata object
-        argl, argd = obs.obsdata_args()
+        argl, argd = self.obsdata_args()
         return Obsdata(*argl, **argd)
     
-    def add_fractional_noise(self, frac: float, debias: bool = False) -> Self:
-        """Wrapper for ehtim's fractional noise addition.
-                
-        Args:
-            frac: Noise percentage to be added.
-            debias: Whether or not to add frac of debiased amplitudes.
-        
-        Returns:
-            Noise-inflated Obsdata object.
-        """
-        obs = super().add_fractional_noise(frac, debias=debias)
-        # Re-build Obsdata object
-        argl, argd = obs.obsdata_args()
-        return Obsdata(*argl, **argd)
-
     def flag_UT_range(
             self,
             UT_start_hour: float = 0.0,
@@ -269,102 +365,36 @@ class Obsdata(eh.obsdata.Obsdata):
         # Re-build Obsdata object
         argl, argd = obs.obsdata_args()
         return Obsdata(*argl, **argd)
-    
-    def split_obs(
-            self,
-            t_gather: float = 0.0,
-            scan_gather: bool = False,
-            min_bl: int = 0,
-            group: int = 0
-    ) -> list:
-        """Split observation wrapper to allow for 'grouping'
+
+    def avg_coherent(self, tavg: float, scan_avg: bool = False) -> Self:
+        """Wrapper for ehtim's coherent time-averaging.
         
         Args:
-            t_gather: Snapshot duration (in seconds).
-            scan_gather: If true, gather data into scans.
-            min_bl: Minimum number of baselines allowed per snapshot.
-            group: Number of adjacent snapshot to group.
+            tavg: Averaging time.
+            scan_avg: Whether to scan average data.
         
         Returns:
-            List of snapshot Obsdata objects.
+            Coherently time-averaged Obsdata object.
         """
-        # Suppress ehtim's printing
-        with ut.no_print():
-            glist = super().split_obs(
-                t_gather=t_gather,
-                scan_gather=scan_gather
-            )
-            glist = [Obsdata(*ob.obsdata_args()[0], **ob.obsdata_args()[1])
-                     for ob in glist]
-        # Drop snapshots with less baselines than specified
-        if min_bl > 0:
-            nvis = min_bl * (min_bl-1) / 2
-            glist = [ob for ob in glist if len(ob.data) >= nvis]
-        # Group observations
-        if group > 0:
-            # Pad list of observations
-            ini = [glist[0]] * group
-            fin = [glist[-1]] * group
-            glist = ini + glist + fin
-            # Group multiple observations
-            glist = [glist[i-group : i+group+1]
-                     for i in np.arange(group, len(glist)-group)]
-            glist = [self.merge_obs(g) for g in glist]
-        print(f'Splitting Observation File into {len(glist)} times')
-        return glist
+        obs = super().avg_coherent(tavg, scan_avg=scan_avg)
+        # Re-build Obsdata object
+        argl, argd = obs.obsdata_args()
+        return Obsdata(*argl, **argd)
     
-    def get_lightcurve(
-            self,
-            tavg: float = 0.0,
-            min_bl: int = 0,
-            uv_max: float | None = None,
-            times: list | None = None
-    ) -> Array:
-        """Extract interpolated light curve from intra-site baselines.
-
+    def add_fractional_noise(self, frac: float, debias: bool = False) -> Self:
+        """Wrapper for ehtim's fractional noise addition.
+                
         Args:
-            tavg: Snapshot duration (in seconds).
-            min_bl: Minimum number of baselines per snapshot.
-            uv_max: Maximum uv-distance allowed for flux density extraction.
-            times: Time stamps over which interpolate (optional).
-
+            frac: Noise percentage to be added.
+            debias: Whether or not to add frac of debiased amplitudes.
+        
         Returns:
-            Interpolated light-curve array.
+            Noise-inflated Obsdata object.
         """
-        with ut.no_print():
-            self.add_scans()
-            obs_split = self.split_obs(t_gather=tavg, min_bl=min_bl)
-        # Univariate spline interpolation
-        alltimes = np.array(
-            [obs_split[j].data['time'][0] for j in range(len(obs_split))]
-        )
-        if uv_max is None:
-            allfluxes = np.array(
-                [np.median(obs_split[j].get_zbl())
-                 for j in range(len(obs_split))]
-            )
-        else:
-            allfluxes = np.array(
-                [np.median(obs_split[j].flag_uvdist(uv_max=uv_max)\
-                                       .unpack('amp')['amp'])
-                for j in range(len(obs_split))]
-            )
-        # Sort by time
-        idxsort = np.argsort(alltimes)
-        alltimes = alltimes[idxsort]
-        allfluxes = allfluxes[idxsort]
-        # NaN masking
-        mask = np.isnan(allfluxes)
-        maskedtimes = alltimes[~mask]
-        maskedfluxes = allfluxes[~mask]
-        # Interpolation
-        spl = interp.UnivariateSpline(maskedtimes, maskedfluxes, ext=3)
-        spl.set_smoothing_factor(1e-10)
-        spl_times = alltimes
-        if times is not None:
-            spl_times = times
-        spl_fluxes = spl(spl_times)
-        return ut.list_to_jaxarr(spl_fluxes)
+        obs = super().add_fractional_noise(frac, debias=debias)
+        # Re-build Obsdata object
+        argl, argd = obs.obsdata_args()
+        return Obsdata(*argl, **argd)
     
     @staticmethod
     def get_data(
@@ -537,78 +567,6 @@ class Obsdata(eh.obsdata.Obsdata):
             )
         return ut.list_to_jaxarr(target, sigma, padmask)
     
-    @staticmethod
-    def _get_baselines(obslist: list, conj: bool = False) -> NDArray:
-        """Retrieve baselines codenames.
-
-        Args:
-            obslist: List of snapshot Obsdata objects.
-            conj: If true, return conjugate baselines as well.
-
-        Returns:
-            Array of baselines codenames.
-        """
-        # Helper padding function
-        def pad(data, maxv):
-            return [
-                tuple(x)
-                for x in np.full((maxv-len(data), 2), fill_value='pad')
-            ]
-        # Extract baseline names
-        blines = []
-        for obs in obslist:
-            blines.append(list(obs.unpack(['t1', 't2'], conj=conj)))
-        # Pad data
-        maxv = np.max([len(b) for b in blines])
-        for i, _ in enumerate(blines):
-            blines[i] = blines[i] + pad(blines[i], maxv)
-        return np.array(blines)
-
-    @staticmethod
-    def _site_to_index(sites: dict, blines: np.ndarray) -> Array:
-        """Convert baselines codenames to baseline indices.
-
-        Args:
-            sites: Dictionary of sites and corresponding index.
-            blines: Array of baselines codenames.
-
-        Returns:
-            Array of baselines indices.
-        """
-        indices = [
-            [tuple(sites[b] for b in bs) for bs in bls]
-            for bls in blines
-        ]
-        return jnp.array(indices)
-
-    def set_gains_vars(self, obslist: list, gains_prior: dict) -> list:
-        """Set variables needed for gain fitting.
-
-        Args:
-            obslist: List of snapshot Obsdata objects.
-            gains_prior: Per-site allowed ranges for amplitude gains values.
-
-        Returns:
-            List of variable required for simultaneous gain fitting.
-        """
-        # Get antenna codenames and index
-        sites = self.tkey
-        # Get number of visibilities
-        nvis = len(sites) * (len(sites) - 1) // 2
-        # Update sites dict with a padding antenna for vectorization
-        sites.update({'pad': len(sites)})
-        # Get number of antennas (including pad)
-        nsites = len(sites)
-        # Get baselines codenames and indices
-        blname = self._get_baselines(obslist)
-        blindx = self._site_to_index(sites, blname)
-        # Get gains prior per antenna
-        gains_prior.update({'pad': [1.00, 1.00]})
-        gains_range = np.array([gains_prior[site] for site in sites])
-        lower = jnp.array(gains_range[:, 0])
-        upper = jnp.array(gains_range[:, 1])
-        return sites, nsites, nvis, blindx, lower, upper
-    
     def get_baselines_nfft(self, conj: bool = True) -> list:
         """Retrieve baselines codenames.
 
@@ -659,47 +617,6 @@ class Obsdata(eh.obsdata.Obsdata):
             pulses = pulse(u, v, 1., dom='F')
             pulsefac.append(pulses * phases)
         return np.array(pulsefac)
-
-    @staticmethod
-    def _tri_minimal_set(sites, tarr):
-        """
-        Returns a minimal set of triangles for bispectra and closure phases
-        (adapted from ehtim.observing.obs_helpers.tri_minimal_set)
-        """
-        # Determine ordering and reference site based on order of self.tarr
-        sites_ordered = [x for x in tarr['site'] if x in sites]
-        ref = sites_ordered[0]
-        sites_ordered.remove(ref)
-        # Find all triangles that contain the ref
-        tris = list(it.combinations(sites_ordered, 2))
-        return [[(ref, t[0]), (t[0], t[1]), (t[1], ref)] for t in tris]
-
-    @staticmethod
-    def _quad_minimal_set(sites, tarr):
-        """
-        Returns a minimal set of quadrangels for closure amplitudes
-        (adapted from ehtim.observing.obs_helpers.quad_minimal_set)
-        """
-        # Determine ordering and reference site based on order of  self.tarr
-        sites_ordered = np.array([x for x in tarr['site'] if x in sites])
-        ref = sites_ordered[0]
-        # Loop over other sites >=3 and form minimal closure amplitude set
-        quads = []
-        for i in range(3, len(sites_ordered)):
-            for j in range(1, i):
-                if j == i-1:
-                    k = 1
-                else:
-                    k = j+1
-                # Convention is (12)(34)/(14)(23)
-                quad = [
-                    (ref, sites_ordered[i]),
-                    (sites_ordered[j], sites_ordered[k]),
-                    (ref, sites_ordered[k]),
-                    (sites_ordered[i], sites_ordered[j])
-                ]
-                quads.append(quad)
-        return quads
 
     def get_closure_baselines(self, which: str) -> list:
         """Get minimal set of closure phases or closure amplitudes.
@@ -773,33 +690,115 @@ class Obsdata(eh.obsdata.Obsdata):
                 frame_indices.append(scan_indices)
         return np.concatenate(frame_indices)
 
-    @classmethod
-    def load_uvfits(cls, inpath: str, **kwargs) -> Self:
-        """Wrapper for ehtim's obsdata loading function.
+    def set_gains_vars(self, obslist: list, gains_prior: dict) -> list:
+        """Set variables needed for gain fitting.
 
         Args:
-            inpath: uvfits path.
-            **kwargs: ehtim's load_uvfits keyword arguments.
+            obslist: List of snapshot Obsdata objects.
+            gains_prior: Per-site allowed ranges for amplitude gains values.
 
         Returns:
-            Obsdata object.
+            List of variable required for simultaneous gain fitting.
         """
-        obs = eh.obsdata.load_uvfits(inpath, **kwargs)
-        argl, argd = obs.obsdata_args()
-        return cls(*argl, **argd)
+        # Get antenna codenames and index
+        sites = self.tkey
+        # Get number of visibilities
+        nvis = len(sites) * (len(sites) - 1) // 2
+        # Update sites dict with a padding antenna for vectorization
+        sites.update({'pad': len(sites)})
+        # Get number of antennas (including pad)
+        nsites = len(sites)
+        # Get baselines codenames and indices
+        blname = self._get_baselines(obslist)
+        blindx = self._site_to_index(sites, blname)
+        # Get gains prior per antenna
+        gains_prior.update({'pad': [1.00, 1.00]})
+        gains_range = np.array([gains_prior[site] for site in sites])
+        lower = jnp.array(gains_range[:, 0])
+        upper = jnp.array(gains_range[:, 1])
+        return sites, nsites, nvis, blindx, lower, upper
 
-    @classmethod
-    def merge_obs(cls, obslist: list[Self], **kwargs) -> Self:
-        """Wrapper for ehtim's merge obs function.
+    @staticmethod
+    def _get_baselines(obslist: list, conj: bool = False) -> NDArray:
+        """Retrieve baselines codenames.
 
         Args:
-            obslist: Snapshot Obsdata to be merged.
-            **kwargs: ehtim's merge_obs keyword arguments.
-        
+            obslist: List of snapshot Obsdata objects.
+            conj: If true, return conjugate baselines as well.
+
         Returns:
-            Merged Obsdata object.
+            Array of baselines codenames.
         """
-        obs = eh.obsdata.merge_obs(obslist, **kwargs)
-        argl, argd = obs.obsdata_args()
-        return cls(*argl, **argd)
-    
+        # Helper padding function
+        def pad(data, maxv):
+            return [
+                tuple(x)
+                for x in np.full((maxv-len(data), 2), fill_value='pad')
+            ]
+        # Extract baseline names
+        blines = []
+        for obs in obslist:
+            blines.append(list(obs.unpack(['t1', 't2'], conj=conj)))
+        # Pad data
+        maxv = np.max([len(b) for b in blines])
+        for i, _ in enumerate(blines):
+            blines[i] = blines[i] + pad(blines[i], maxv)
+        return np.array(blines)
+
+    @staticmethod
+    def _site_to_index(sites: dict, blines: np.ndarray) -> Array:
+        """Convert baselines codenames to baseline indices.
+
+        Args:
+            sites: Dictionary of sites and corresponding index.
+            blines: Array of baselines codenames.
+
+        Returns:
+            Array of baselines indices.
+        """
+        indices = [
+            [tuple(sites[b] for b in bs) for bs in bls]
+            for bls in blines
+        ]
+        return jnp.array(indices)
+
+    @staticmethod
+    def _tri_minimal_set(sites, tarr):
+        """
+        Returns a minimal set of triangles for bispectra and closure phases
+        (adapted from ehtim.observing.obs_helpers.tri_minimal_set)
+        """
+        # Determine ordering and reference site based on order of self.tarr
+        sites_ordered = [x for x in tarr['site'] if x in sites]
+        ref = sites_ordered[0]
+        sites_ordered.remove(ref)
+        # Find all triangles that contain the ref
+        tris = list(it.combinations(sites_ordered, 2))
+        return [[(ref, t[0]), (t[0], t[1]), (t[1], ref)] for t in tris]
+
+    @staticmethod
+    def _quad_minimal_set(sites, tarr):
+        """
+        Returns a minimal set of quadrangels for closure amplitudes
+        (adapted from ehtim.observing.obs_helpers.quad_minimal_set)
+        """
+        # Determine ordering and reference site based on order of  self.tarr
+        sites_ordered = np.array([x for x in tarr['site'] if x in sites])
+        ref = sites_ordered[0]
+        # Loop over other sites >=3 and form minimal closure amplitude set
+        quads = []
+        for i in range(3, len(sites_ordered)):
+            for j in range(1, i):
+                if j == i-1:
+                    k = 1
+                else:
+                    k = j+1
+                # Convention is (12)(34)/(14)(23)
+                quad = [
+                    (ref, sites_ordered[i]),
+                    (sites_ordered[j], sites_ordered[k]),
+                    (ref, sites_ordered[k]),
+                    (sites_ordered[i], sites_ordered[j])
+                ]
+                quads.append(quad)
+        return quads
