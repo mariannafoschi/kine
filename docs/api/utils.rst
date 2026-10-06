@@ -35,8 +35,8 @@ utils
 .. autosummary::
    :nosignatures:
 
-   ~kine.utils.no_print
    ~kine.utils.init_worker
+   ~kine.utils.no_print
 
 .. autoclass:: kine.utils.HyperParams
    :exclude-members: __init__

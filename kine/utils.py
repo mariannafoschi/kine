@@ -27,33 +27,17 @@ from jax import Array
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
-
-@contextmanager
-def no_print():
-    """Suppress stdout within the context."""
-    with open(os.devnull, "w") as f:
-        with redirect_stdout(f):
-            yield
-
 class HyperParams:
     """Create a class object to store hyperparameters.
 
     Every key of the input dictionary becomes an attribute, so that
-    ``params['npix']`` can be read as ``hyperparams.npix``. Which keys are
-    expected depends on the imaging mode; see the parameter reference in
-    the documentation.
+    ``params['npix']`` can be read as ``hyperparams.npix``.
 
     Args:
         params: Hyperparameters, typically read from a YAML parameter
             file. Each key is set as an attribute of the object.
     """
     def __init__(self, params: dict) -> None:
-        """Initialize class attributes.
-
-        Args:
-            params: Hyperparameters, typically read from a YAML parameter
-                file. Each key is set as an attribute of the object.
-        """
         self.__dict__.update(params)
 
 class Schedule:
@@ -68,13 +52,6 @@ class Schedule:
         * Add more custom schedules
     """
     def __init__(self, lr_i: float, lr_f: float, niter: int) -> None:
-        """Initialize class attributes.
-
-        Args:
-            lr_i: Initial learning rate.
-            lr_f: Final learning rate.
-            niter: Number of training iterations.
-        """
         self.lr_i: float = lr_i
         self.lr_f: float = lr_f
         self.niter: int = niter
@@ -94,15 +71,114 @@ class Schedule:
         log_lr = log_i + frac * (log_f - log_i)
         return jnp.exp(log_lr)
 
-def init_worker(fn: Callable, *args) -> None:
-    """Asynchronous worker for CPU plotting.
+def get_grid(
+        nx: int,
+        ny: int,
+        nt: int | None = None,
+        times: ArrayLike | None = None,
+        tdil: float = 10
+) -> Array:
+    """Generate grid of space-time coordinates.
 
     Args:
-        fn: Asynchronous plotting function.
-        *args: Queue object.
+        nx: Number of spatial locations in Right Ascension.
+        ny: Number of spatial locations in Declination.
+        nt: Number of time locations.
+        times: Array of (irregular) time locations.
+        tdil: Time dilation factor.
+    
+    Returns:
+        Grid of space-time coordinates.
     """
-    t = threading.Thread(target=fn, args=args, daemon=True)
-    t.start()
+    # 3D grid (t,x,y)
+    if nt is not None:
+        xx = jnp.linspace(0, 1, nx)
+        yy = jnp.linspace(0, 1, ny)
+        tt = jnp.linspace(0, 1, nt) / tdil
+        if times is not None:
+            tt = (times - times[0]) / (times[-1] - times[0]) / tdil
+            nt = len(times)
+        mesh = jnp.meshgrid(tt, xx, yy, indexing='ij')
+        grid = jnp.stack(mesh, axis=-1)
+        grid = grid.reshape(nt, -1, 3)
+    # 2D grid (x,y)
+    else:
+        xx = np.linspace(0, 1, nx)
+        yy = np.linspace(0, 1, ny)
+        mesh = np.meshgrid(xx, yy, indexing='ij')
+        grid = np.stack(mesh, axis=-1)
+        grid = grid.reshape(-1, 2)
+    return grid
+
+def get_times_multiepoch(
+        inpaths: str | list,
+        labels: bool = False,
+        fmt: str | None = None,
+        integer: bool = True
+) -> Array | list:
+    """Extract observation times from multiepoch observations.
+
+    By default the times are read from the metadata of each uvfits file, so
+    no assumption is made on how the files are named. Alternatively, a list
+    of Obsdata objects can be passed and their ``mjd`` attribute is used), 
+    otherwise the times can be parsed from the file names by passing a format 
+    through `fmt`.
+
+    Args:
+        inpaths: List of paths to the observation files (or a single path),
+            or list of ``Obsdata`` objects.
+        labels: If True, return times in YYYY-MM-DD format. If False,
+            return times in mjd format (required for training).
+        fmt: Optional ``datetime.strptime`` format matching the whole file
+            name (e.g. ``'obs_%Y_%m_%d.uvfits'``), used to parse the dates
+            from the file names instead of reading them from the metadata.
+        integer: If True, round the times down to integer mjd (one time
+            coordinate per day). Ignored if `labels` is True.
+
+    Returns:
+        Array of mjd times, or list of YYYY-MM-DD strings if `labels` is True.
+    """
+    from astropy.time import Time
+
+    if isinstance(inpaths, str):
+        inpaths = [inpaths]
+
+    mjds = []
+    for path in inpaths:
+        if fmt is not None:
+            mjds.append(_mjd_from_filename(path, fmt))
+        elif hasattr(path, 'mjd'):  # already loaded Obsdata object
+            mjds.append(float(path.mjd) + float(getattr(path, 'time', 0.)) / 24)
+        else:
+            mjds.append(_mjd_from_uvfits(path))
+
+    if labels:
+        return [Time(mjd, format='mjd').iso[:10] for mjd in mjds]
+    if integer:
+        return jnp.array([int(mjd) for mjd in mjds])
+    return jnp.array(mjds)
+
+def get_static_flux(
+        found_flux: float,
+        min_lcurve: float,
+        min_flux_offset: float = 0.1
+) -> float:
+    """Determine static flux density.
+    
+    Args:
+        found_flux: Flux density found through regularization.
+        min_lcurve: Light-curve minimum value.
+        min_flux_offset: Offset from light-curve minimum.
+
+    Returns:
+        Static flux density, capped so that it stays at least
+        `min_flux_offset` below the light-curve minimum.
+    """
+    if found_flux < 0.95:
+        if found_flux <= (min_lcurve - min_flux_offset):
+            return found_flux
+        return min_lcurve - min_flux_offset
+    return found_flux
 
 def list_to_jaxarr(*args) -> Array | list[Array]:
     """Convert a list of arguments to JAX arrays.
@@ -227,49 +303,22 @@ def batchify(batch: list | ArrayLike, *args) -> list[Array] | Array:
             batched.append(arg[batch, ...])
     return batched if len(batched) > 1 else batched[0]
 
-def get_grid(
-        nx: int,
-        ny: int,
-        nt: int | None = None,
-        times: ArrayLike | None = None,
-        tdil: float = 10
-) -> Array:
-    """Generate grid of space-time coordinates.
-
-    The network is trained to predict the emission at locations (x, y, t)
-    given by the initial grid of coordinates, but will learn a smooth
-    interpolation between them that can be later sampled by passing a
-    different (finer and time-homogeneous) grid of coordinates.
+def init_worker(fn: Callable, *args) -> None:
+    """Asynchronous worker for CPU plotting.
 
     Args:
-        nx: Number of spatial locations in Right Ascension.
-        ny: Number of spatial locations in Declination.
-        nt: Number of time locations.
-        times: Array of (irregular) time locations.
-        tdil: Time dilation factor.
-    
-    Returns:
-        Grid of space-time coordinates.
+        fn: Asynchronous plotting function.
+        *args: Queue object.
     """
-    # 3D grid (t,x,y)
-    if nt is not None:
-        xx = jnp.linspace(0, 1, nx)
-        yy = jnp.linspace(0, 1, ny)
-        tt = jnp.linspace(0, 1, nt) / tdil
-        if times is not None:
-            tt = (times - times[0]) / (times[-1] - times[0]) / tdil
-            nt = len(times)
-        mesh = jnp.meshgrid(tt, xx, yy, indexing='ij')
-        grid = jnp.stack(mesh, axis=-1)
-        grid = grid.reshape(nt, -1, 3)
-    # 2D grid (x,y)
-    else:
-        xx = np.linspace(0, 1, nx)
-        yy = np.linspace(0, 1, ny)
-        mesh = np.meshgrid(xx, yy, indexing='ij')
-        grid = np.stack(mesh, axis=-1)
-        grid = grid.reshape(-1, 2)
-    return grid
+    t = threading.Thread(target=fn, args=args, daemon=True)
+    t.start()
+    
+@contextmanager
+def no_print():
+    """Suppress stdout within the context."""
+    with open(os.devnull, "w") as f:
+        with redirect_stdout(f):
+            yield
 
 def _mjd_from_uvfits(path: str) -> float:
     """Read the observation MJD from the metadata of the file.
@@ -332,73 +381,3 @@ def _mjd_from_filename(path: str, fmt: str) -> float:
 
     name = os.path.basename(path)
     return float(Time(datetime.strptime(name, fmt)).mjd)
-
-def get_times_multiepoch(
-        inpaths: str | list,
-        labels: bool = False,
-        fmt: str | None = None,
-        integer: bool = True
-) -> Array | list:
-    """Extract observation times from multiepoch observations.
-
-    By default the times are read from the metadata of each uvfits file, so
-    no assumption is made on how the files are named. Alternatively, a list
-    of Obsdata objects can be passed and their ``mjd`` attribute is used), 
-    otherwise the times can be parsed from the file names by passing a format 
-    through `fmt`.
-
-    Args:
-        inpaths: List of paths to the observation files (or a single path),
-            or list of ``Obsdata`` objects.
-        labels: If True, return times in YYYY-MM-DD format. If False,
-            return times in mjd format (required for training).
-        fmt: Optional ``datetime.strptime`` format matching the whole file
-            name (e.g. ``'obs_%Y_%m_%d.uvfits'``), used to parse the dates
-            from the file names instead of reading them from the metadata.
-        integer: If True, round the times down to integer mjd (one time
-            coordinate per day). Ignored if `labels` is True.
-
-    Returns:
-        Array of mjd times, or list of YYYY-MM-DD strings if `labels` is True.
-    """
-    from astropy.time import Time
-
-    if isinstance(inpaths, str):
-        inpaths = [inpaths]
-
-    mjds = []
-    for path in inpaths:
-        if fmt is not None:
-            mjds.append(_mjd_from_filename(path, fmt))
-        elif hasattr(path, 'mjd'):  # already loaded Obsdata object
-            mjds.append(float(path.mjd) + float(getattr(path, 'time', 0.)) / 24)
-        else:
-            mjds.append(_mjd_from_uvfits(path))
-
-    if labels:
-        return [Time(mjd, format='mjd').iso[:10] for mjd in mjds]
-    if integer:
-        return jnp.array([int(mjd) for mjd in mjds])
-    return jnp.array(mjds)
-
-def get_static_flux(
-        found_flux: float,
-        min_lcurve: float,
-        min_flux_offset: float = 0.1
-) -> float:
-    """Determine static flux density.
-    
-    Args:
-        found_flux: Flux density found through regularization.
-        min_lcurve: Light-curve minimum value.
-        min_flux_offset: Offset from light-curve minimum.
-
-    Returns:
-        Static flux density, capped so that it stays at least
-        `min_flux_offset` below the light-curve minimum.
-    """
-    if found_flux < 0.95:
-        if found_flux <= (min_lcurve - min_flux_offset):
-            return found_flux
-        return min_lcurve - min_flux_offset
-    return found_flux
