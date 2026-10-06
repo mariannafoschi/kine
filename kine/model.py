@@ -261,8 +261,8 @@ class AmplitudeGains(nn.Module):
     nsites: int = 8
     ntimes: int = 99
 
-    def clipping(self, x: ArrayLike, site: str) -> Array:
-        """Clip gains within specified range.
+    def clipping_ag(self, x: ArrayLike, site: str) -> Array:
+        """Clip amplitude gains within specified range.
         
         Args:
             x: Input array.
@@ -299,8 +299,8 @@ class AmplitudeGains(nn.Module):
         # Select telescopes indices and corresponding gains
         i = baselines[frames, :, 0]
         j = baselines[frames, :, 1]
-        gi = self.clipping(gains[i, frames.reshape(-1, 1)], i)
-        gj = self.clipping(gains[j, frames.reshape(-1, 1)], j)
+        gi = self.clipping_ag(gains[i, frames.reshape(-1, 1)], i)
+        gj = self.clipping_ag(gains[j, frames.reshape(-1, 1)], j)
         return gi, gj
 
 class PhaseGains(nn.Module):
@@ -314,8 +314,8 @@ class PhaseGains(nn.Module):
     nsites: int = 8
     ntimes: int = 99
 
-    def clipping(self, x: ArrayLike) -> Array:
-        """Clip gains to the [-pi,pi] interval.
+    def clipping_pg(self, x: ArrayLike) -> Array:
+        """Clip phase gains to the [-pi,pi] interval.
                 
         Args:
             x: Input array of phase gains.
@@ -345,8 +345,8 @@ class PhaseGains(nn.Module):
         # Select telescopes indices and corresponding gains
         i = baselines[frames, :, 0]
         j = baselines[frames, :, 1]
-        gi = self.clipping(gains[i, frames.reshape(-1, 1)])
-        gj = self.clipping(gains[j, frames.reshape(-1, 1)])
+        gi = self.clipping_pg(gains[i, frames.reshape(-1, 1)])
+        gj = self.clipping_pg(gains[j, frames.reshape(-1, 1)])
         return gi, gj
 
 class _ComplexGains(nn.Module):
@@ -367,15 +367,15 @@ class _ComplexGains(nn.Module):
     nsites: int = 8
     ntimes: int = 99
 
-    def clipping(self, x, site):
-        """Clip gains within specified range"""
+    def clipping_ag(self, x, site):
+        """Clip amplitude gains within specified range"""
         lower  = self.lower[site]
         upper  = self.upper[site]
         # return lower + (upper - lower) * jax.nn.sigmoid(x / 1)
         return jnp.clip(x, lower, upper)
 
-    def clipping2(self, x):
-        """Clip gains within specified range"""
+    def clipping_pg(self, x):
+        """Clip phase gains within [-pi, pi]"""
         # return jnp.clip(x, -np.pi, np.pi)
         return jnp.mod(x, 2*np.pi) - np.pi
 
@@ -391,10 +391,10 @@ class _ComplexGains(nn.Module):
         # Select telescopes indices and corresponding gains
         i = baselines[frames, :, 0]
         j = baselines[frames, :, 1]
-        mod_gi = self.clipping(jnp.abs(gains[i, frames.reshape(-1, 1)]), i)
-        mod_gj = self.clipping(jnp.abs(gains[j, frames.reshape(-1, 1)]), j)
-        arg_gi = self.clipping2(jnp.angle(gains[i, frames.reshape(-1, 1)]))
-        arg_gj = self.clipping2(jnp.angle(gains[j, frames.reshape(-1, 1)]))
+        mod_gi = self.clipping_ag(jnp.abs(gains[i, frames.reshape(-1, 1)]), i)
+        mod_gj = self.clipping_ag(jnp.abs(gains[j, frames.reshape(-1, 1)]), j)
+        arg_gi = self.clipping_pg(jnp.angle(gains[i, frames.reshape(-1, 1)]))
+        arg_gj = self.clipping_pg(jnp.angle(gains[j, frames.reshape(-1, 1)]))
         gi = mod_gi * jnp.exp(1j * arg_gi)
         gj = mod_gj * jnp.exp(1j * arg_gj)
         # Apply gains and return modified amplitudes
