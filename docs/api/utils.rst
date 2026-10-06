@@ -62,6 +62,6 @@ utils
 
 .. autofunction:: kine.utils.batchify
 
-.. autofunction:: kine.utils.no_print
-
 .. autofunction:: kine.utils.init_worker
+
+.. autofunction:: kine.utils.no_print

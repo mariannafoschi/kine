@@ -119,10 +119,8 @@ def get_times_multiepoch(
     """Extract observation times from multiepoch observations.
 
     By default the times are read from the metadata of each uvfits file, so
-    no assumption is made on how the files are named. Alternatively, a list
-    of Obsdata objects can be passed and their ``mjd`` attribute is used), 
-    otherwise the times can be parsed from the file names by passing a format 
-    through `fmt`.
+    no assumption is made on how the files are named. Alternatively the times 
+    can be parsed from the file names by passing a format through `fmt`.
 
     Args:
         inpaths: List of paths to the observation files (or a single path),
@@ -256,7 +254,7 @@ def pad(arr: list[ArrayLike]) -> Array:
     return jnp.array(arr)
 
 def map_val_to_ind(arr1: ArrayLike, arr2: ArrayLike) -> Array:
-    """Map arr2 values to indices in arr1.
+    """Map `arr2` values to indices in `arr1`.
 
     Args:
         arr1: Reference array whose positions define the indices.
@@ -312,7 +310,7 @@ def init_worker(fn: Callable, *args) -> None:
     """
     t = threading.Thread(target=fn, args=args, daemon=True)
     t.start()
-    
+
 @contextmanager
 def no_print():
     """Suppress stdout within the context."""
