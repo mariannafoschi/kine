@@ -604,14 +604,16 @@ the circular polarization fraction is appended as a fourth channel:
 .. code-block:: python
 
    init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
-   init_vid.add_tophat(lcurve, h.init_params)
+   init_vid.add_tophat(lcurve, h.init_params)               # tot. int.
    init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0)  # lin. pol.
    init_vid.add_constant_circpol(circpolfrac=0.05)          # circ. pol.
 
-   init_arr = jnp.concatenate(
-       [init_vid.iarr, init_vid.larr, init_vid.xarr, init_vid.carr],  # drop carr for outdim=4
+   init_arr = init_vid.iarr                                                            # Stokes I only
+   init_arr = jnp.concatenate([init_vid.iarr, init_vid.larr, init_vid.xarr], axis=-1)  # Stokes I,Q,U
+   init_arr = jnp.concatenate(                                                         # Stokes I,Q,U,V
+       [init_vid.iarr, init_vid.larr, init_vid.xarr, init_vid.carr], 
        axis=-1
-   )
+   )  
 
 The channel order is fixed to :math:`(I, m_\ell, \chi, m_c)`. Each array has
 shape ``(ntimes, npix, npix, 1)``, or ``(npix, npix, 1)`` for a
@@ -636,7 +638,7 @@ products:
            odict(
                state=state,
                grid=grid,
-               init_arr=init_arr  # init_vid.iarr for Stokes I only
+               init_arr=init_arr
            )
        )
        lloss.append(loss)
