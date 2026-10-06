@@ -85,7 +85,7 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
     return jnp.concatenate(out, axis=-1)
 
 class NeuralField(nn.Module):
-    """Neural Field network modeling a full polarimetric video.
+    """Neural network modeling a total intensity or full polarimetric video.
     
     Predicts full pol. emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
@@ -172,7 +172,7 @@ class NeuralField(nn.Module):
         return x
 
 class NeuralFieldPol(nn.Module):
-    """Neural Field network modeling a linear polarization video.
+    """Neural network modeling a linear polarization video.
     
     Predicts lin. pol. emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
