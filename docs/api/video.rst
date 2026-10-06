@@ -54,6 +54,7 @@ Video
    ~kine.video.Video.save_h5
 
 .. autoclass:: kine.video.Video
+   :exclude-members: __init__
 
 Image
 -----
@@ -94,3 +95,4 @@ Image
    ~kine.video.Image.save_fits
 
 .. autoclass:: kine.video.Image
+   :exclude-members: __init__

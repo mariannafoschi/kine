@@ -40,8 +40,10 @@ utils
    ~kine.utils.init_worker
 
 .. autoclass:: kine.utils.HyperParams
+   :exclude-members: __init__
 
 .. autoclass:: kine.utils.Schedule
+   :exclude-members: __init__
 
 .. autofunction:: kine.utils.get_grid
 

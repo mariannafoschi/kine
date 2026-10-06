@@ -31,7 +31,7 @@ link at the bottom of this page for those.
    ~kine.obsdata.Obsdata.fix_multifreq
    ~kine.obsdata.Obsdata.split_obs
 
-**Preprocessing**
+**Pre-processing**
 
 .. autosummary::
    :nosignatures:

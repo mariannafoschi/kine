@@ -38,8 +38,6 @@ class Obsdata(eh.obsdata.Obsdata):
     Inherits all attributes and methods from ehtim's Obsdata
     and adds new helpfuls methods for data processing with `kine`.
 
-    See Also:
-        ehtim.obsdata.Obsdata: Base class providing core functionality.
     """
 
     @classmethod

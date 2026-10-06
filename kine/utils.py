@@ -42,6 +42,10 @@ class HyperParams:
     ``params['npix']`` can be read as ``hyperparams.npix``. Which keys are
     expected depends on the imaging mode; see the parameter reference in
     the documentation.
+
+    Args:
+        params: Hyperparameters, typically read from a YAML parameter
+            file. Each key is set as an attribute of the object.
     """
     def __init__(self, params: dict) -> None:
         """Initialize class attributes.
