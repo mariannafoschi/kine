@@ -1,16 +1,15 @@
 utils
 =====
 
-**Hyperparameters and learning-rate schedules**
+**Hyperparameters utilities**
 
 .. autosummary::
    :nosignatures:
 
    ~kine.utils.HyperParams
    ~kine.utils.Schedule
-   ~kine.utils.Schedule.exponential
 
-**Coordinate grids and time handling**
+**Data utilities**
 
 .. autosummary::
    :nosignatures:
@@ -19,7 +18,7 @@ utils
    ~kine.utils.get_times_multiepoch
    ~kine.utils.get_static_flux
 
-**Array helpers**
+**Array utilities**
 
 .. autosummary::
    :nosignatures:
@@ -31,7 +30,7 @@ utils
    ~kine.utils.map_val_to_ind
    ~kine.utils.batchify
 
-**I/O and concurrency**
+**Output utilities**
 
 .. autosummary::
    :nosignatures:
