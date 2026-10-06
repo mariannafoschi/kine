@@ -87,7 +87,7 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
 class NeuralField(nn.Module):
     """Neural network modeling a total intensity or full polarimetric video.
     
-    Predicts full pol. emission at space-time coordinates (x, y, t).
+    Predicts full polarization emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
     and fed to an MLP. We use batch normalization and skip connections.
     
@@ -174,7 +174,7 @@ class NeuralField(nn.Module):
 class NeuralFieldPol(nn.Module):
     """Neural network modeling a linear polarization video.
     
-    Predicts lin. pol. emission at space-time coordinates (x, y, t).
+    Predicts linear polarization emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
     and fed to an MLP. We use batch normalization and skip connections.
     
