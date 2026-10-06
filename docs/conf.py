@@ -222,23 +222,40 @@ def _shorten_array_types(app, what, name, obj, options, signature,
     return fix(signature), fix(return_annotation)
 
 
-# The breeze theme only splits a signature over 60 characters one parameter
-# per line, so a short class (e.g. PhaseGains) would stay on a single line.
-# Force the multi-line layout on every class signature instead.
-def _multiline_class_signatures(app, doctree):
+# The breeze theme splits a signature one parameter per line when it is over
+# `python_maximum_signature_line_length` (60) characters, but Sphinx measures
+# the raw string, `~jax.typing.ArrayLike` and all, so short methods such as
+# `clipping_ag(x: ArrayLike, site: str) -> Array` get split too. Re-decide
+# on the text actually displayed. Class signatures are always split.
+def _set_signature_layout(app, doctree):
     from sphinx import addnodes
 
+    max_len = app.config.python_maximum_signature_line_length
+    shown = (addnodes.desc_name, addnodes.desc_parameterlist,
+             addnodes.desc_returns)
     for desc in doctree.findall(addnodes.desc):
-        if desc.get('domain') != 'py' or desc.get('objtype') != 'class':
+        if desc.get('domain') != 'py':
             continue
-        for sig in desc.findall(addnodes.desc_signature):
+        # Only the object's own signature(s): the class body nested inside
+        # `desc` holds the member signatures, handled on their own.
+        for sig in desc.children:
+            if not isinstance(sig, addnodes.desc_signature):
+                continue
+            if desc.get('objtype') == 'class':
+                multi_line = True
+            elif max_len:
+                text = ''.join(n.astext() for n in sig.children
+                               if isinstance(n, shown))
+                multi_line = len(text) > max_len
+            else:
+                continue
             for params in sig.findall(addnodes.desc_parameterlist):
-                params['multi_line_parameter_list'] = True
+                params['multi_line_parameter_list'] = multi_line
 
 
 def setup(app):
     app.connect('autodoc-process-signature', _shorten_array_types)
-    app.connect('doctree-read', _multiline_class_signatures)
+    app.connect('doctree-read', _set_signature_layout)
 
 
 # -- Source button

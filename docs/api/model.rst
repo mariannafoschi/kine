@@ -31,11 +31,7 @@ model
 
 .. autoclass:: kine.model.AmplitudeGains
 
-.. automethod:: kine.model.AmplitudeGains.clipping_ag
-
 .. autoclass:: kine.model.PhaseGains
-
-.. automethod:: kine.model.PhaseGains.clipping_pg
 
 .. autofunction:: kine.model.posenc
    
