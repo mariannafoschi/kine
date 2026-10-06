@@ -89,7 +89,8 @@ class NeuralField(nn.Module):
     
     Predicts full polarization emission at space-time coordinates (x, y, t).
     Input coordinates are transformed through poisitional encoding
-    and fed to an MLP. We use batch normalization and skip connections.
+    and fed to an MLP. The architecture includes batch normalization and skip 
+    connections.
     
     Args:
         posenc_deg: Degrees of positional encoding

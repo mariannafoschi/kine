@@ -15,9 +15,9 @@ model
    :nosignatures:
 
    ~kine.model.AmplitudeGains
-   ~kine.model.AmplitudeGains.clipping
    ~kine.model.PhaseGains
-   ~kine.model.PhaseGains.clipping
+   ~kine.model.AmplitudeGains.clipping_ag
+   ~kine.model.PhaseGains.clipping_pg
 
 **Activation and encoding helpers**
 
