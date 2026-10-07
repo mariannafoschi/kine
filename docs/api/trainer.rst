@@ -44,7 +44,8 @@ and so on). The chosen loss then assembles a ``chi2`` term per requested
 data product through ``_loss_chi``, if requested adds the regularizer terms, and 
 sums them.
 
-**Loss selection and top-level losses**
+Loss selection and top-level losses
+...................................
 
 .. autosummary::
    :nosignatures:
@@ -58,7 +59,6 @@ sums them.
    ~kine.trainer.Trainer._loss_fn_nfft
    ~kine.trainer.Trainer._loss_fn_div_gains
    ~kine.trainer.Trainer._loss_fn_div_gains_fluxreg
-   ~kine.trainer.Trainer._loss_fn_div_gains_fluxpar
 
 .. automethod:: kine.trainer.Trainer._loss_fn_red
 .. automethod:: kine.trainer.Trainer._which_loss_fn
@@ -69,9 +69,9 @@ sums them.
 .. automethod:: kine.trainer.Trainer._loss_fn_nfft
 .. automethod:: kine.trainer.Trainer._loss_fn_div_gains
 .. automethod:: kine.trainer.Trainer._loss_fn_div_gains_fluxreg
-.. automethod:: kine.trainer.Trainer._loss_fn_div_gains_fluxpar
 
-**Data product dispatch and gain correction**
+:math:`\chi^2` loss selection and gain correction
+.................................................
 
 .. autosummary::
    :nosignatures:
@@ -82,12 +82,12 @@ sums them.
 .. automethod:: kine.trainer.Trainer._loss_chi
 .. automethod:: kine.trainer.Trainer._loss_gains
 
-**Data product** :math:`\chi^2` **terms**
+Data product loss terms
+.......................
 
 Each data product has up to three variants: ``_2d`` for static imaging,
 ``_3d`` for dynamic imaging (frame-padded, weighted by ``padmask``), and
-``_3d_nfft`` for dynamic imaging with the NUFFT, which receives
-pre-computed visibilities rather than a video.
+``_3d_nfft`` for dynamic imaging with the NUFFT.
 
 .. autosummary::
    :nosignatures:
@@ -132,7 +132,8 @@ pre-computed visibilities rather than a video.
 .. automethod:: kine.trainer.Trainer._loss_mbreve_2d
 .. automethod:: kine.trainer.Trainer._loss_mbreve_3d
 
-**Regularizers**
+Regularizers loss terms
+.......................
 
 .. autosummary::
    :nosignatures:

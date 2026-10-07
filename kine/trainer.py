@@ -122,7 +122,7 @@ class Trainer(train_state.TrainState):
     def _which_loss_fn(*args, **kwargs):
         """Select the loss function based on the input arguments.
 
-        The loss is chosen from the keys that are *present* in `kwargs`
+        The loss is chosen from the keys that are present in `kwargs`
         rather than from an explicit argument, so that the choice is a
         compile-time constant under :func:`jax.jit`. Keys are tested in the
         order below, so an earlier one wins:
