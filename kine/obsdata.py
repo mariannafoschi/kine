@@ -156,8 +156,7 @@ class Obsdata(eh.obsdata.Obsdata):
     def norm_to_max(self) -> Self:
         """Normalize amplitudes to shortest baseline flux density.
 
-        Currently required for decomposing
-        into static and dynamic components.
+        Required for decomposing into static and dynamic components.
         
         Returns:
             Normalized Obsdata object.
@@ -202,7 +201,7 @@ class Obsdata(eh.obsdata.Obsdata):
         
         Given a reference Obsdata object, change metadata of
         current Obsdata so they match. Same as fix_multiepoch but no
-        frequency and bandwidth matching
+        frequency and bandwidth matching.
 
         Args:
             refobs: Reference Obsdata object.
@@ -259,8 +258,8 @@ class Obsdata(eh.obsdata.Obsdata):
     def flag_empty(self) -> Self:
         """Flag sites with no measurements.
 
-        Obsdata sometimes include atennas with no data.
-        For instance, after time splitting. Remove those antennas.
+        Obsdata sometimes include atennas with no data, for instance, after time 
+        splitting. Remove those antennas.
         
         Returns:
             Cleared Obsdata object.
@@ -413,7 +412,7 @@ class Obsdata(eh.obsdata.Obsdata):
 
         Returns:
             List of jnp.ndarrays with data products and corresponding sigmas,
-            Fourier trnasformations (optional) and padding masks (optional).
+            Fourier transformations (optional) and padding masks (optional).
         """
         # Check whether single or list of obs
         if not isinstance(obs, list):
@@ -499,8 +498,8 @@ class Obsdata(eh.obsdata.Obsdata):
         """Generate data products with NUFFT.
 
         Args:
-            obs: Obsdata or list of Obsdata from which
-                data products are computed.
+            obs: Obsdata or list of Obsdata from which data products are 
+                computed.
             dtype: Data product type (e.g., visI, cphaseI).
                 Last letter indicates polarization.
             prior: ehtim's Image object from which metadata is extracted.
@@ -508,7 +507,7 @@ class Obsdata(eh.obsdata.Obsdata):
 
         Returns:
             List of jnp.ndarrays with data products and corresponding sigmas,
-            Fourier trnasformations (optional) and padding masks (optional).
+            Fourier transformations (optional) and padding masks (optional).
         """
         # Check whether single or list of obs
         if not isinstance(obs, list):

@@ -46,7 +46,7 @@ class Trainer(train_state.TrainState):
 
     Adds batch normalization to flax.training.train_state.TrainState.
     In addition, all functions related to training, like loss functions,
-    are included here as (mostly private) static methods for consistency.
+    are included here as static methods for consistency.
 
     Attributes:
         batch_stats: Batch normalization statistics.

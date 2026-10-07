@@ -32,13 +32,8 @@ advance it by one optimization step.
 .. autoclass:: kine.trainer.Trainer
    :inherited-members: PyTreeNode
 
-Internal loss terms
--------------------
-
-The methods below are private implementation detail and are **not** part of
-the public API: their names, signatures and grouping may change without
-notice. They are documented here so that each option in
-:doc:`../parameters` can be traced to the term it switches on.
+Loss terms
+----------
 
 :meth:`~kine.trainer.Trainer.train_step` does not take a loss function as an
 argument. Instead it calls ``_loss_fn_red``, which delegates to
@@ -46,7 +41,8 @@ argument. Instead it calls ``_loss_fn_red``, which delegates to
 present in* ``kwargs`` (``init_arr`` selects the initialization loss,
 ``uvpoints`` the NUFFT loss, ``s_grid`` the static + dynamic decomposition,
 and so on). The chosen loss then assembles a ``chi2`` term per requested
-data product through ``_loss_chi``, adds the regularizers, and sums them.
+data product through ``_loss_chi``, if requested adds the regularizer terms, and 
+sums them.
 
 **Loss selection and top-level losses**
 
