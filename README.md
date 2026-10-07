@@ -30,8 +30,6 @@ Coming Soon:
 
 ## Documentation
 
-**NOTE:** API docs are still provisional.
-
 Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes installation instructions, simple example scripts to get started, a complete user guide to imaging with kine, a parameter overview, and API documentation.
 
 A full description of the imaging algorithm and extensive reconstruction validation tests are presented in the publications:

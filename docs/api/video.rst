@@ -1,15 +1,21 @@
 video
 =====
 
-The :class:`~kine.video.Video` class is the central container for
-reconstructed image cubes. It bundles all Stokes/polarization arrays
-together with their world-coordinate metadata, exposes constructors for
-building a video from a Flax training state or from a saved file, and
-provides plotting and export routines.
+The :class:`~kine.video.Video` class is the central container for reconstructed 
+videos or spectral image cubes. It bundles all Stokes/polarization arrays
+together with corresponding metadata, contains constructors for building videos 
+from a Flax training state or from a saved file, and provides plotting and 
+export routines.
 
 The :class:`~kine.video.Image` class is its time-independent counterpart,
 used for static imaging. It offers the same construction, plotting and
 export interface for a single frame.
+
+.. autosummary::
+   :nosignatures:
+
+   ~kine.video.Video
+   ~kine.video.Image
 
 Video
 -----
@@ -19,7 +25,6 @@ Video
 .. autosummary::
    :nosignatures:
 
-   ~kine.video.Video
    ~kine.video.Video.from_state
    ~kine.video.Video.from_states
    ~kine.video.Video.from_video
@@ -64,7 +69,6 @@ Image
 .. autosummary::
    :nosignatures:
 
-   ~kine.video.Image
    ~kine.video.Image.from_state
    ~kine.video.Image.from_image
    ~kine.video.Image.from_fits

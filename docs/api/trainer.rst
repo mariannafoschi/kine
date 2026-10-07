@@ -44,8 +44,8 @@ and so on). The chosen loss then assembles a ``chi2`` term per requested
 data product through ``_loss_chi``, if requested adds the regularizer terms, and 
 sums them.
 
-Loss selection and top-level losses
-...................................
+Top-level losses
+................
 
 .. autosummary::
    :nosignatures:
@@ -70,8 +70,8 @@ Loss selection and top-level losses
 .. automethod:: kine.trainer.Trainer._loss_fn_div_gains
 .. automethod:: kine.trainer.Trainer._loss_fn_div_gains_fluxreg
 
-:math:`\chi^2` loss selection and gain correction
-.................................................
+Data and gains losses
+.....................
 
 .. autosummary::
    :nosignatures:
