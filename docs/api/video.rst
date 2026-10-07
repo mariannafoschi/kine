@@ -20,7 +20,7 @@ export interface for a single frame.
 Video
 -----
 
-**Construction from training output**
+**Video object creation**
 
 .. autosummary::
    :nosignatures:
@@ -30,7 +30,7 @@ Video
    ~kine.video.Video.from_video
    ~kine.video.Video.from_h5
 
-**Adding ancillary components**
+**Adding video arrays**
 
 .. autosummary::
    :nosignatures:
@@ -64,7 +64,7 @@ Video
 Image
 -----
 
-**Construction from training output**
+**Image object creation**
 
 .. autosummary::
    :nosignatures:
@@ -73,7 +73,7 @@ Image
    ~kine.video.Image.from_image
    ~kine.video.Image.from_fits
 
-**Adding ancillary components**
+**Adding image arrays**
 
 .. autosummary::
    :nosignatures:

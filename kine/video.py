@@ -154,9 +154,6 @@ class Image:
             loss: list[float] | dict | None = None
     ) -> None:
         """Create Image object from current network's state.
-
-        Intended for re-sampling on a different grid of
-        space-time coordinates.
         
         Args:
             state: Current network's state.
@@ -225,8 +222,7 @@ class Image:
     ) -> None:
         """Create Image object from input fits file.
 
-        Note:
-            Currently it only supports Stokes I.
+           Currently it only supports Stokes I.
 
         Args:
             inpath: Input path of fits file.
@@ -257,7 +253,6 @@ class Image:
         If fitting for linear polarization, pol. field vectors,
         lin. pol. frac., and EVPA plots will be shown along Stokes I.
         If training, loss progress will be shown as well.
-        ...
 
         Args:
             out: Image array.
@@ -435,17 +430,15 @@ class Image:
 
         Plot results from CPU without stopping GPU computations.
         It loads the network output on a separate thread.
-
-        Note:
-            Not very matplotlib-safe because of threading, but it
-            works just fine so far. Warnings may appear occasionally.
         
         Args:
             q: Queue object where output is loaded.
-        
-        Todo:
-            * Make sure arrays are transferred to CPU.
         """
+
+        # Not very matplotlib-safe because of threading, but it works just fine 
+        # so far. Warnings may appear occasionally.
+        # Todo: Make sure arrays are transferred to CPU.
+    
         def _async_plot_impl(
                 *,
                 image,
@@ -618,9 +611,6 @@ class Video:
             loss: list[float] | dict | None = None
     ) -> None:
         """Create Video object from current network's state.
-
-        Intended for re-sampling on a different grid of
-        space-time coordinates.
         
         Args:
             state: Current network's state.
@@ -668,8 +658,7 @@ class Video:
             s_grid: Input space coordinates for static network.
             d_grid: Input space-time coordinates for dynamic network.
             lcurve: Light-curve flux density array.
-            min_lcurve: Static component flux density. It usually
-                corresponds to the minimum value of the data light-curve.
+            min_lcurve: Static component flux density.
             loss: Current loss value.
             amp_gains: Fitted visibility amplitude gains.
         """
@@ -742,9 +731,8 @@ class Video:
             fn: Callable | None = None
     ) -> None:
         """Create Video object from input h5 file.
-
-        Note:
-            Currently it only supports Stokes I.
+           
+           Currently it only supports Stokes I.
 
         Args:
             inpath: Input path of h5 file.
@@ -773,13 +761,12 @@ class Video:
             show: bool = False,
             outpath: str = './tmp.png'
     ) -> None:
-        """Plot frames (and current loss) from Video object in full pol.
+        """Plot frames (and current loss) from Video object in full polarization.
 
         General plotting function for static and dynamic imaging.
         If fitting for linear polarization, pol. field vectors,
         lin. pol. frac., and EVPA plots will be shown along Stokes I.
         If training, loss progress will be shown as well.
-        ...
 
         Args:
             s_out: Static component video array.
@@ -1285,7 +1272,7 @@ class Video:
             vscale: float = 0.05,
             outpath='./video.gif'
     ) -> None:
-        """Plot gif from Video object in full pol.
+        """Plot gif from Video object in full polarization.
 
         Args:
             s_out: Static component video array.
@@ -1485,10 +1472,6 @@ class Video:
 
         Plot results from CPU without stopping GPU computations.
         It loads the network output on a separate thread.
-
-        Note:
-            Not very matplotlib-safe because of threading, but it
-            works just fine so far. Warnings may appear occasionally.
         
         Args:
             q: Queue object where output is loaded.
@@ -1496,6 +1479,10 @@ class Video:
         Todo:
             * Make sure arrays are transferred to CPU.
         """
+
+        # Not very matplotlib-safe because of threading, but it works just fine 
+        # so far. Warnings may appear occasionally.
+
         def _async_plot_impl(
                 *,
                 video,
