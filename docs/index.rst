@@ -58,10 +58,10 @@ If you use ``kine`` in your publication, please cite:
 
 1. *[Main algorithm, Muti-epoch imaging, Static Imaging]* : Foschi M., Zhao B., 
    Fuentes A. et al. "Video reconstruction of variable VLBI observations with 
-   neural fields". Accepted (2026).
+   neural fields". Nature, 2026.
 2. *[Static + Dynamic decomposition, EHT SgrA* pipeline]* : Fuentes A., Foschi, 
    M., et al. "Validation of horizon-scale Sagittarius A* video reconstructions 
-   with kine". Under review (2026).
+   with kine". Under review in A&A(2026).
 
 Developers
 ----------
