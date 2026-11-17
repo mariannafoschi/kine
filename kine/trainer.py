@@ -228,7 +228,7 @@ class Trainer(train_state.TrainState):
         netoutpol = {
             pol: netout[..., 0] if pol == 'I'
             else netout[..., 1] if pol == 'Ml'
-            else jnp.arctan2(netout[..., 2], netout[..., 3]) * 0.5 if pol == 'X'
+            else jnp.arctan2(netout[..., 3], netout[..., 2]) * 0.5 if pol == 'X'
             else netout[..., 4]
             for pol in polchan
             }
@@ -275,7 +275,7 @@ class Trainer(train_state.TrainState):
         polchan = ['Ml', 'X']
         videopol = {
             pol: video[..., 0] if pol == 'Ml'
-            else jnp.arctan2(video[..., 1], video[..., 2]) * 0.5
+            else jnp.arctan2(video[..., 2], video[..., 1]) * 0.5
             for _, pol in enumerate(polchan)
             }
         initpol = {
@@ -364,7 +364,7 @@ class Trainer(train_state.TrainState):
         """Loss function for training a general 2D or 3D network.
 
         The polarization channels are reconstructed from the network output
-        as :math:`Q = -I\\,m_l\\cos(2\\xi)`,
+        as :math:`Q = I\\,m_l\\cos(2\\xi)`,
         :math:`U = I\\,m_l\\sin(2\\xi)` and :math:`V = I\\,m_c`, then one
         :math:`\\chi^2` is accumulated per requested data product. The
         light-curve regularizer is added when ``lcurve`` is not ``None``.
@@ -397,7 +397,7 @@ class Trainer(train_state.TrainState):
         netoutpol = {
             pol: ut.to_complex(netout[..., 0]) if pol == 'I'
             else ut.to_complex(
-                -netout[..., 0] * netout[..., 1] * netout[..., 2]
+                netout[..., 0] * netout[..., 1] * netout[..., 2]
             ) if pol == 'Q'
             else ut.to_complex(
                 netout[..., 0] * netout[..., 1] * netout[..., 3]
@@ -471,7 +471,7 @@ class Trainer(train_state.TrainState):
         # Separate polarimetric channels
         videopol = {
             'I': ut.to_complex(init_vid_i),
-            'Q': ut.to_complex(-init_vid_i * video[..., 0] * video[..., 1]),
+            'Q': ut.to_complex(init_vid_i * video[..., 0] * video[..., 1]),
             'U': ut.to_complex(init_vid_i * video[..., 0] * video[..., 2])
             }
         # Data product loss functions

@@ -36,6 +36,74 @@ from . import utils as ut
     significantly cleaner. Saving and exporting methods are also included here.
 """
 
+def _linpol(
+        iarr: ArrayLike,
+        ml: ArrayLike,
+        c: ArrayLike,
+        s: ArrayLike
+) -> tuple[ArrayLike, ...]:
+    """Linear polarization arrays from the network's output channels.
+
+    Q and U are built as Q = I ml c and U = I ml s, with c and s the cos(2 xi) 
+    and sin(2 xi) channels. These are not constrained to unit length, so the 
+    polarization fraction is |Q + iU| / I = ml |(c, s)| rather than ml.
+
+    Args:
+        iarr: Stokes I array.
+        ml: Linear polarization fraction channel.
+        c: cos(2 xi) channel.
+        s: sin(2 xi) channel.
+
+    Returns:
+        Lin. pol. fraction, EVPA (0.5 arg(Q + iU), radians), Stokes Q,
+        Stokes U, and lin. pol. intensity arrays.
+    """
+    qarr = iarr * ml * c
+    uarr = iarr * ml * s
+    xarr = 0.5 * jnp.arctan2(s, c)
+    larr = ml * jnp.sqrt(c**2 + s**2)
+    parr = jnp.sqrt(qarr**2 + uarr**2)
+    return larr, xarr, qarr, uarr, parr
+
+def _norm(
+        arr: ArrayLike,
+        panel: int = 0,
+        scale: str = 'lin',
+        drange: float = 1e3
+) -> tuple[float, mcolors.Normalize]:
+    """Offset and colour normalization of a plot panel.
+
+    Only Stokes I can be shown on a log scale; the offset (added to the array
+    before plotting) keeps it above the log floor. The EVPA always spans one
+    period of the cyclic colour map, and the circular polarization fraction is
+    centered on zero for the diverging colour map.
+
+    Args:
+        arr: Array to plot.
+        panel: 0 Stokes I, 1 lin. pol. frac., 2 EVPA, 3 circ. pol. frac.
+        scale: 'lin' or 'log' (Stokes I only).
+        drange: Dynamic range of the log scale.
+
+    Returns:
+        Offset to add to `arr`, and the colour normalization.
+    """
+    if panel == 0:
+        vmax = arr.max()
+        if scale == 'log':
+            return vmax / drange, mcolors.LogNorm(vmin=vmax/drange, vmax=vmax)
+        return 0.0, mcolors.Normalize(vmin=arr.min(), vmax=vmax)
+    if panel == 1:
+        return 0.0, mcolors.Normalize(vmin=0.0, vmax=arr.max())
+    if panel == 2:
+        return 0.0, mcolors.Normalize(vmin=-np.pi/2, vmax=np.pi/2)
+    m = np.abs(arr).max()
+    return 0.0, mcolors.Normalize(vmin=-m, vmax=m)
+
+def _centres(fov: float, npix: int) -> np.ndarray:
+    """Pixel-centre positions in uas, matching the plots' extent (RA left)."""
+    half = (fov/2 - fov/npix/2) / eh.RADPERUAS
+    return np.linspace(half, -half, npix)
+
 class Image:
     """A polarimetric image array with metadata.
 
@@ -132,7 +200,7 @@ class Image:
 
         Args:
             linpolfrac: Linear polarization fraction value.
-            evpa: EVPA value.
+            evpa: EVPA in radians (east of north).
         """
         self.polchan = 3
         self.larr = linpolfrac * jnp.ones((self.npix, self.npix, 1))
@@ -175,14 +243,14 @@ class Image:
         polchan = out.shape[-1]
         self.iarr = out[..., 0].reshape(self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
-            self.larr = out[..., 1].reshape(self.npix, self.npix, 1)
-            self.xarr = jnp.arctan2(
-                out[..., 2], out[..., 3]
-            ).reshape(self.npix, self.npix, 1) * 0.5
-            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
-            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
-            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+            self.polchan = 3
+            ml, c, s = (
+                out[..., k].reshape(self.npix, self.npix, 1) for k in (1, 2, 3)
+            )
+            self.larr, self.xarr, self.qarr, self.uarr, self.parr = \
+                _linpol(self.iarr, ml, c, s)
         if polchan > 4:
+            self.polchan = 4
             self.carr = out[..., 4].reshape(self.npix, self.npix, 1)
             self.varr = self.iarr * self.carr
         self.loss = loss
@@ -208,13 +276,12 @@ class Image:
         # linear polarization
         if polchan > 1:
             self.polchan = 3
-            self.larr = out[..., 1-dim].reshape(self.npix, self.npix, 1)
-            self.xarr = jnp.arctan2(
-                out[..., 2-dim], out[..., 3-dim]
-            ).reshape(self.npix, self.npix, 1) * 0.5
-            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
-            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
-            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+            ml, c, s = (
+                out[..., k-dim].reshape(self.npix, self.npix, 1)
+                for k in (1, 2, 3)
+            )
+            self.larr, self.xarr, self.qarr, self.uarr, self.parr = \
+                _linpol(self.iarr, ml, c, s)
         # circular polarization
         if polchan > 4:
             self.polchan = 4
@@ -285,15 +352,7 @@ class Image:
         ]
         # Scale bar
         barl = self.fov / eh.RADPERUAS / 5
-        # Set colorbar scale
-        def normalize(arr, scale=scale, drange=drange):
-            vmin, vmax = arr.min(), arr.max()
-            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-            if scale == 'log':
-                vmin = vmax / drange
-                norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-            return vmin, vmax, norm
-        
+
         # Select frames to show
         # Titles, colormaps, etc
         cmap = ['inferno', 'viridis', 'twilight', 'coolwarm']
@@ -310,15 +369,10 @@ class Image:
                 ncols = 1
             ax = subfig.subplots(1, ncols)
             ax = np.atleast_1d(ax).ravel()
-            if j == 0:
-                arr = self.iarr
-            elif j == 1:
-                arr = self.larr
-            else:
-                arr = self.xarr
-            vmin, _, norm = normalize(arr)
-            # Stokes I, ml, and EVPA
-            ax[0].imshow(arr + vmin, extent=extent, norm=norm, cmap=cmap[j])
+            arr = (self.iarr, self.larr, self.xarr, self.carr)[j]
+            offset, norm = _norm(arr, j, scale, drange)
+            # Stokes I, ml, EVPA, and mc
+            ax[0].imshow(arr + offset, extent=extent, norm=norm, cmap=cmap[j])
             ax[0].set_xticks([])
             ax[0].set_yticks([])
             # Flux label
@@ -329,8 +383,7 @@ class Image:
                 )
             # Pol. field vectors on top of Stokes I
             if self.qarr is not None and j == 0:
-                x = np.linspace(extent[0], extent[1], self.npix)
-                y = np.linspace(extent[0], extent[1], self.npix)
+                x = y = _centres(self.fov, self.npix)
                 vx = np.sin(
                     np.angle(self.qarr + 1j * self.uarr) / 2
                 ) * self.parr * -1
@@ -591,7 +644,7 @@ class Video:
 
         Args:
             linpolfrac: Linear polarization fraction value.
-            evpa: EVPA value.
+            evpa: EVPA in radians (east of north).
         """
         self.polchan = 3
         self.larr = linpolfrac * jnp.ones(
@@ -640,14 +693,15 @@ class Video:
         polchan = out.shape[-1]
         self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
-            self.larr = out[..., 1].reshape(-1, self.npix, self.npix, 1)
-            self.xarr = jnp.arctan2(
-                out[..., 2], out[..., 3]
-            ).reshape(-1, self.npix, self.npix, 1) * 0.5
-            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
-            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
-            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+            self.polchan = 3
+            ml, c, s = (
+                out[..., k].reshape(-1, self.npix, self.npix, 1)
+                for k in (1, 2, 3)
+            )
+            self.larr, self.xarr, self.qarr, self.uarr, self.parr = \
+                _linpol(self.iarr, ml, c, s)
         if polchan > 4:
+            self.polchan = 4
             self.carr = out[..., 4].reshape(-1, self.npix, self.npix, 1)
             self.varr = self.iarr * self.carr
         self.loss = loss
@@ -699,14 +753,15 @@ class Video:
         polchan = out.shape[-1]
         self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
-            self.larr = out[..., 1].reshape(-1, self.npix, self.npix, 1)
-            self.xarr = jnp.arctan2(
-                out[..., 2], out[..., 3]
-            ).reshape(-1, self.npix, self.npix, 1) * 0.5
-            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
-            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
-            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+            self.polchan = 3
+            ml, c, s = (
+                out[..., k].reshape(-1, self.npix, self.npix, 1)
+                for k in (1, 2, 3)
+            )
+            self.larr, self.xarr, self.qarr, self.uarr, self.parr = \
+                _linpol(self.iarr, ml, c, s)
         if polchan > 4:
+            self.polchan = 4
             self.carr = out[..., 4].reshape(-1, self.npix, self.npix, 1)
             self.varr = self.iarr * self.carr
         self.loss = loss
@@ -732,13 +787,12 @@ class Video:
         # linear polarization
         if polchan > 1:
             self.polchan = 3
-            self.larr = out[..., 1-dim].reshape(-1, self.npix, self.npix, 1)
-            self.xarr = jnp.arctan2(
-                out[..., 2-dim], out[..., 3-dim]
-            ).reshape(-1, self.npix, self.npix, 1) * 0.5
-            self.qarr = - self.iarr * self.larr * jnp.sin(2*self.xarr)
-            self.uarr = self.iarr * self.larr * jnp.cos(2*self.xarr)
-            self.parr = jnp.sqrt(self.qarr**2 + self.uarr**2)
+            ml, c, s = (
+                out[..., k-dim].reshape(-1, self.npix, self.npix, 1)
+                for k in (1, 2, 3)
+            )
+            self.larr, self.xarr, self.qarr, self.uarr, self.parr = \
+                _linpol(self.iarr, ml, c, s)
         # circular polarization
         if polchan > 4:
             self.polchan = 4
@@ -815,15 +869,7 @@ class Video:
         ]
         # Scale bar
         barl = self.fov / eh.RADPERUAS / 5
-        # Set colorbar scale
-        def normalize(arr, scale=scale, drange=drange):
-            vmin, vmax = arr.min(), arr.max()
-            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-            if scale == 'log':
-                vmin = vmax / drange
-                norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-            return vmin, vmax, norm
-        
+
         # Single dynamic network polarimetric plotting
         if s_out is None:
             # Select frames to show
@@ -837,8 +883,8 @@ class Video:
                 nrow, ncol = 1, len(self.times) + int(self.loss is not None)
                 frames = np.arange(len(self.times), dtype=int)
             # Titles, colormaps, etc
-            cmap = ['inferno', 'viridis', 'twilight']
-            label = ['Stokes I', 'Lin. pol. frac.', 'EVPA']
+            cmap = ['inferno', 'viridis', 'twilight', 'coolwarm']
+            label = ['Stokes I', 'Lin. pol. frac.', 'EVPA', 'Circ. pol. frac.']
             # Subfiguring
             fig = plt.figure(figsize=(5*ncol, ((5*nrow)+1)*self.polchan))
             subfigs = fig.subfigures(self.polchan, 1)
@@ -847,17 +893,12 @@ class Video:
             for j, subfig in enumerate(subfigs):
                 ax = subfig.subplots(nrow, ncol)
                 ax = np.atleast_1d(ax).ravel()
-                if j == 0:
-                    arr = self.iarr
-                elif j == 1:
-                    arr = self.larr
-                else:
-                    arr = self.xarr
-                vmin, _, norm = normalize(arr)
+                arr = (self.iarr, self.larr, self.xarr, self.carr)[j]
+                offset, norm = _norm(arr, j, scale, drange)
                 for i, f in enumerate(frames):
-                    # Stokes I, ml, and EVPA
+                    # Stokes I, ml, EVPA, and mc
                     ax[i].imshow(
-                        arr[f] + vmin,
+                        arr[f] + offset,
                         extent=extent,
                         norm=norm,
                         cmap=cmap[j]
@@ -865,7 +906,7 @@ class Video:
                     ax[i].set_xticks([])
                     ax[i].set_yticks([])
                     # Labels
-                    c = 'k' if j == 2 else 'w'
+                    c = 'k' if j >= 2 else 'w'
                     ax[i].text(
                         0.98,
                         0.98,
@@ -911,8 +952,7 @@ class Video:
                         )
                     # Pol. field vectors on top of Stokes I
                     if self.qarr is not None and j == 0:
-                        x = np.linspace(extent[0], extent[1], self.npix)
-                        y = np.linspace(extent[0], extent[1], self.npix)
+                        x = y = _centres(self.fov, self.npix)
                         vx = np.sin(
                             np.angle(self.qarr[f] + 1j * self.uarr[f]) / 2
                         ) * self.parr[f] * -1
@@ -1320,14 +1360,6 @@ class Video:
         ]
         # Scale bar
         barl = self.fov / eh.RADPERUAS / 5
-        # Set colorbar scale
-        def normalize(arr, scale=scale, drange=drange):
-            vmin, vmax = arr.min(), arr.max()
-            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-            if scale == 'log':
-                vmin = vmax / drange
-                norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-            return vmin, vmax, norm
         # Number of axes
         video = {'video': self.iarr}
         if s_out is not None:
@@ -1370,9 +1402,9 @@ class Video:
             for i, key in enumerate(video):
                 cmap = 'magma_r' if key == 'dynamic' else 'inferno'
                 ax[i].clear()
-                vmin, _, norm = normalize(video[key])
+                offset, norm = _norm(video[key], 0, scale, drange)
                 ax[i].imshow(
-                    video[key][f] + vmin,
+                    video[key][f] + offset,
                     extent=extent,
                     cmap=cmap,
                     norm=norm
@@ -1431,8 +1463,7 @@ class Video:
                     )
                 # Polarization
                 if self.qarr is not None and i == 0:
-                    x = np.linspace(extent[0], extent[1], self.npix)
-                    y = np.linspace(extent[0], extent[1], self.npix)
+                    x = y = _centres(self.fov, self.npix)
                     vx = np.sin(
                         np.angle(self.qarr[f] + 1j * self.uarr[f]) / 2
                     ) * self.parr[f] * -1

@@ -154,8 +154,8 @@ class NeuralField(nn.Module):
         # Rescale outputs with final activations, where
         # x[...,0] = Stokes I
         # x[...,1] = linear pol. fraction ml
-        # x[...,2] = sin(2xi)
-        # x[...,3] = cos(2xi)
+        # x[...,2] = cos(2xi)
+        # x[...,3] = sin(2xi)
         # x[...,4] = circular pol. fraction mc
         x = x.at[..., 0].set(
             self.outactiv(x[..., 0] - self.outshift) * self.scaling_i
@@ -239,8 +239,8 @@ class NeuralFieldPol(nn.Module):
         x = dense_layer(self.outdim)(x)
         # Rescale outputs with final activations, where
         # x[...,0] = linear pol. fraction ml
-        # x[...,1] = sin(2xi)
-        # x[...,2] = cos(2xi)
+        # x[...,1] = cos(2xi)
+        # x[...,2] = sin(2xi)
         x = x.at[..., 0].set(
             nn.sigmoid(x[..., 0] - self.outshift) * self.scaling_ml
         )

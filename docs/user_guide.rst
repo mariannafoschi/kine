@@ -510,11 +510,11 @@ Output channels
    * - ``1``
      - :math:`\hat I` only
    * - ``4``
-     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
-       :math:`\cos 2\hat\chi`
+     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\cos 2\hat\chi`,
+       :math:`\sin 2\hat\chi`
    * - ``5``
-     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
-       :math:`\cos 2\hat\chi`, :math:`\hat m_c`
+     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\cos 2\hat\chi`,
+       :math:`\sin 2\hat\chi`, :math:`\hat m_c`
 
 The EVPA is predicted through its sine and cosine to avoid a discontinuity at
 the wrap, and recovered as
@@ -523,9 +523,15 @@ parameters follow as
 
 .. math::
 
-   \hat Q = -\hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
-   \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
-   \hat V =  \hat I\,\hat m_c .
+   \hat Q = \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
+   \hat U = \hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
+   \hat V = \hat I\,\hat m_c ,
+
+the standard convention, so that :math:`\hat\chi = \tfrac12\arg(\hat Q + i\hat U)`
+is the EVPA (east of north). The sine and cosine channels are not constrained to
+unit length, so the linear polarization fraction reported by
+:class:`~kine.field.Image` and :class:`~kine.field.Video` (and stored in the
+saved Q and U) is :math:`|\hat Q + i\hat U|/\hat I`.
 
 Activations
 ...........
@@ -610,7 +616,7 @@ the circular polarization fraction is appended as a fourth channel:
 
    init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    init_vid.add_tophat(lcurve, h.init_params)              # tot. int.
-   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol.
+   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol. (EVPA in rad)
    init_vid.add_constant_circpol(circpolfrac=0.05)         # circ. pol.
 
    init_arr = init_vid.iarr                                                         # Stokes I only
@@ -1195,7 +1201,7 @@ complex visibilities.
 
      network = mo.NeuralFieldPol(
          posenc_deg=tuple(h.nposenc),
-         outdim=3,                  # (ml, sin 2xi, cos 2xi)
+         outdim=3,                  # (ml, cos 2xi, sin 2xi)
          depth=h.depth,
          width=h.width,
          activ=sharpgelu,
@@ -1240,8 +1246,8 @@ complex visibilities.
 
   .. math::
 
-     \hat Q = -\hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
-     \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi,
+     \hat Q = \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
+     \hat U = \hat I\,\hat m_\ell \sin 2\hat\chi,
 
   with a regularizer term :math:`\langle |m_\ell|\,e^{-|I|/\tau}\rangle` with
   :math:`\tau = 0.01`, suppressing polarization in regions with no total
