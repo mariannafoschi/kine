@@ -15,6 +15,7 @@ utils
    :nosignatures:
 
    ~kine.utils.get_grid
+   ~kine.utils.regrid_image
    ~kine.utils.get_times_multiepoch
    ~kine.utils.get_static_flux
 
@@ -45,6 +46,8 @@ utils
    :exclude-members: __init__
 
 .. autofunction:: kine.utils.get_grid
+
+.. autofunction:: kine.utils.regrid_image
 
 .. autofunction:: kine.utils.get_times_multiepoch
 

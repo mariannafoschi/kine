@@ -168,6 +168,7 @@ of the random initial parameters.
            output=h.tflag['out']
        )
        obs = obs.flag_empty()                   # drop antennas with no data
+       fluxnorm = obs.get_zbl()                 # peak zbl flux (Jy), kept
        obs = obs.norm_to_max()                  # normalize amplitudes
        
 Observations are loaded as :class:`kine.obsdata.Obsdata` objects and minimal 
@@ -212,7 +213,8 @@ Available preprocessing
      - Divides all visibilities and sigmas by the shortest-baseline flux
        density, so that fluxes are expressed in units of the peak zero-baseline
        flux. Required for the static + dynamic decomposition, which assumes
-       normalized components.
+       normalized components. The factor is ``obs.get_zbl()`` and is not
+       stored: keep it (``fluxnorm`` above) to convert the results back to Jy.
 
 For more details on data preprocessing see `eht-imaging's documentation 
 <https://achael.github.io/eht-imaging/obsdata.html>`_.
@@ -301,11 +303,14 @@ columns ``(x, y)``; the 3D grid has shape ``(nt, npix*npix, 3)`` with columns
 ``(t, x, y)`` (or ``(f, x, y)``).  The column order matters, because the 
 positional encoding degrees are given per column.
 
-Spatial coordinates are normalized to :math:`[0, 1]`. Time coordinates are
-normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` (default 10) is a 
-factor that sets the scale of the time axis relative to the spatial axes, and 
-therefore how readily the network varies its output along time compared to 
-space.
+Spatial coordinates are normalized to :math:`[0, 1]` and the pixel centres 
+:math:`(k + 1/2)/n_\mathrm{pix}`, :math:`k = 0, \dots, n_\mathrm{pix}-1`, of a 
+unit field of view. This matches the cell-centred pixels of the Fourier 
+operators, so a given coordinate is the same sky position for any ``npix``. 
+Time coordinates are normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` 
+(default 10) is a factor that sets the scale of the time axis relative to the 
+spatial axes, and therefore how readily the network varies its output along time 
+compared to space.
 
 Passing ``times=`` places the time coordinates at the real (generally irregular)
 observation times, rescaled to that interval. Passing only ``nt`` places them
@@ -858,11 +863,15 @@ regularizers of the branch in use.
    # Re-sample the network on a finer grid
    grid_out = ut.get_grid(h.npix_out, h.npix_out, ntimes, times=times)
    video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
-   video.from_state(state, grid_out)
+   video.from_state(state, grid_out, npix_train=h.npix)
    video.save_h5('./output.h5')
 
-Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of 
+Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of
 the trained network on a finer grid.
+The network's Stokes I output is in Jy per *training* pixel, so pass
+``npix_train`` whenever the output grid has a different ``npix``: Stokes I is
+then rescaled by :math:`(n_\mathrm{train}/n_\mathrm{out})^2` and the total flux
+density is preserved.
 The same applies to time: passing a regular ``times`` array to ``get_grid`` 
 produces evenly spaced frames from irregularly sampled observations.
 
@@ -967,7 +976,7 @@ Reconstruct a single image from a single observation.
 
      grid_out = ut.get_grid(h.npix_out, h.npix_out)
      image = vi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
-     image.from_state(state, grid_out)
+     image.from_state(state, grid_out, npix_train=h.npix)
      image.save_fits('./output_image.fits')
 
 .. _spectral-imaging:
@@ -1069,9 +1078,11 @@ The source is modelled as a persistent image plus a time-variable video,
 where :math:`f_\mathrm{static}` is a 2D neural field, :math:`f_\mathrm{dynamic}`
 a 3D one, :math:`L(t)` is the light curve, and :math:`S_\mathrm{static}` is the
 flux of the persistent component. Both fields are normalized to unit total flux
-so the physical flux value is carried by the light curve. This is also why the 
-data must be normalized with :meth:`~kine.obsdata.Obsdata.norm_to_max` in block 
-3.
+so the physical flux value is carried by the light curve. This is also why the
+data must be normalized with :meth:`~kine.obsdata.Obsdata.norm_to_max` in block
+3. Training therefore runs in units of the peak zero-baseline flux, and every
+saved output (plots and videos) is multiplied back by ``fluxnorm`` (the
+``obs.get_zbl()`` value kept before normalizing) to be in Jy.
 
 Both networks use ``outactiv=nn.sigmoid`` rather than softplus, since their
 outputs are normalized fractions; the static network is shallower
@@ -1136,7 +1147,14 @@ both networks to a disk, starts fitting the gains (``ut.Schedule(5e-5, 1e-3, h.n
 
 The result is written with :meth:`~kine.video.Video.from_states`, which
 evaluates both networks and recombines them with the light curve, plus
-``save_h5`` and ``save_gains``.
+``save_h5`` and ``save_gains``. The light curve and static flux passed to it are
+rescaled to Jy, so the saved video is in physical units:
+
+.. code-block:: python
+
+   video.from_states(s_state, d_state, s_grid, d_grid,
+                     lcurve * fluxnorm, min_lcurve * fluxnorm,
+                     amp_gains=amp_gains, npix_train=h.npix_1)
 
 **Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.video.Video.from_h5` rather 
 than from a disk. The dynamic component in the initialization video is blurred 

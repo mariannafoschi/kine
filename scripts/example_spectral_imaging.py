@@ -336,7 +336,7 @@ grid = ut.get_grid(h.npix_out, h.npix_out, nfreqs, times=freqs)
 # Generate output video
 print("-------\nSampling network on a finer grid and saving results...\n")
 video = vi.Video(freqs, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=labels)
-video.from_state(state, grid)
+video.from_state(state, grid, npix_train=h.npix)
 video.save_h5(outdir+'output_multifreq2.h5')
 video.plot_gif(outpath=outdir+'output_multifreq2.gif')
 video.plot(outpath=outdir+'output_train2.png')

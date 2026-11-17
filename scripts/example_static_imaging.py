@@ -267,6 +267,6 @@ grid_out = ut.get_grid(h.npix_out, h.npix_out)
 
 # Generate output image
 image = vi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
-image.from_state(state, grid_out)
+image.from_state(state, grid_out, npix_train=h.npix)
 image.plot(outpath='./output_image.png')
 image.save_fits('./output_image.fits')

@@ -381,5 +381,5 @@ Sampling network on a finer grid and saving results...
     """
 )
 video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=dates)
-video.from_state(state, grid)
+video.from_state(state, grid, npix_train=h.npix)
 video.save_h5('./video_1.h5')

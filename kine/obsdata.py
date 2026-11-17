@@ -92,11 +92,13 @@ class Obsdata(eh.obsdata.Obsdata):
         idx = np.argmin(self.amp['baselength'])
         min_bl = [self.amp.iloc[idx]['t1'], self.amp.iloc[idx]['t2']]
         self.amp = amp_backup
+        dat = self.unpack(['t1', 't2', 'amp'], conj=True)
+        amps = dat['amp'][(dat['t1'] == min_bl[0]) & (dat['t2'] == min_bl[1])]
         # Currently using max, prev. was median
         if mode=='max':
-            return np.max(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
+            return np.max(amps)
         elif mode=='median':
-            return np.median(self.unpack_bl(min_bl[0], min_bl[1],'amp')['amp'])
+            return np.median(amps)
         else:
             raise ValueError("Invalid mode. Use 'max' or 'median'.")
 
@@ -156,8 +158,8 @@ class Obsdata(eh.obsdata.Obsdata):
     def norm_to_max(self) -> Self:
         """Normalize amplitudes to shortest baseline flux density.
 
-        Required for decomposing into static and dynamic components.
-        
+        Required for decomposing into static and dynamic components. 
+
         Returns:
             Normalized Obsdata object.
         """
@@ -563,7 +565,22 @@ class Obsdata(eh.obsdata.Obsdata):
                 axis=0
             )
         return ut.list_to_jaxarr(target, sigma, padmask)
-    
+
+    def _tlist(self, conj: bool = False) -> list[NDArray]:
+        """Group the data by time, as a list of record arrays.
+
+        Args:
+            conj: If true, include conjugate baselines.
+
+        Returns:
+            List of record arrays, one per time stamp.
+        """
+        data = self.data_conj() if conj else self.data
+        return [
+            np.array(list(group), dtype=data.dtype)
+            for _, group in it.groupby(data, lambda x: x['time'])
+        ]
+
     def get_baselines_nfft(self, conj: bool = True) -> list:
         """Retrieve baselines codenames.
 
@@ -574,7 +591,7 @@ class Obsdata(eh.obsdata.Obsdata):
             List of baselines codenames.
         """
         # Extract baseline names
-        tlist = self.tlist(conj=conj)
+        tlist = self._tlist(conj=conj)
         blines = []
         for tdata in tlist:
             blines.append([(dat['t1'], dat['t2']) for dat in tdata])
@@ -591,7 +608,7 @@ class Obsdata(eh.obsdata.Obsdata):
             Scaled uv coordinates.
         """
         # Extract uv coordinates
-        tlist = self.tlist(conj=conj)
+        tlist = self._tlist(conj=conj)
         us, vs = [], []
         for tdata in tlist:
             us.append([dat['u'] * psize * 2 * np.pi for dat in tdata])
@@ -625,7 +642,7 @@ class Obsdata(eh.obsdata.Obsdata):
         Returns:
             Closure phases or closure amplitudes codenames.
         """
-        tlist = self.tlist(conj=True)
+        tlist = self._tlist(conj=True)
         closures = []
         for tdata in tlist:
             sites = list(set(np.hstack((tdata['t1'], tdata['t2']))))

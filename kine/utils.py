@@ -21,6 +21,8 @@ from collections.abc import Callable
 from contextlib import contextmanager, redirect_stdout
 
 import numpy as np
+import ehtim as eh
+from scipy.interpolate import RegularGridInterpolator
 
 import jax
 from jax import Array
@@ -80,20 +82,24 @@ def get_grid(
 ) -> Array:
     """Generate grid of space-time coordinates.
 
+    Spatial coordinates are the pixel centres ``(k + 0.5) / n`` of a unit
+    field of view, matching the cell-centred pixel convention of the
+    Fourier operators (ehtim's DFT and the NUFFT with its half-pixel phase).
+
     Args:
         nx: Number of spatial locations in Right Ascension.
         ny: Number of spatial locations in Declination.
         nt: Number of time locations.
         times: Array of (irregular) time locations.
         tdil: Time dilation factor.
-    
+
     Returns:
         Grid of space-time coordinates.
     """
     # 3D grid (t,x,y)
     if nt is not None:
-        xx = jnp.linspace(0, 1, nx)
-        yy = jnp.linspace(0, 1, ny)
+        xx = (jnp.arange(nx) + 0.5) / nx
+        yy = (jnp.arange(ny) + 0.5) / ny
         tt = jnp.linspace(0, 1, nt) / tdil
         if times is not None:
             tt = (times - times[0]) / (times[-1] - times[0]) / tdil
@@ -103,12 +109,58 @@ def get_grid(
         grid = grid.reshape(nt, -1, 3)
     # 2D grid (x,y)
     else:
-        xx = np.linspace(0, 1, nx)
-        yy = np.linspace(0, 1, ny)
+        xx = (np.arange(nx) + 0.5) / nx
+        yy = (np.arange(ny) + 0.5) / ny
         mesh = np.meshgrid(xx, yy, indexing='ij')
         grid = np.stack(mesh, axis=-1)
         grid = grid.reshape(-1, 2)
     return grid
+
+def regrid_image(im: eh.image.Image, fov: float, npix: int) -> eh.image.Image:
+    """Resample an ehtim Image onto a square grid, conserving flux density.
+
+    Args:
+        im: Image to resample.
+        fov: New field of view in radians.
+        npix: New number of pixels per side.
+
+    Returns:
+        Resampled image, with the same metadata as `im`.
+    """
+    psize = fov / npix
+    # Cell-centred pixel positions, input padded with one zero pixel per side
+    y_in = (np.arange(-1, im.ydim + 1) - (im.ydim - 1) / 2) * im.psize
+    x_in = (np.arange(-1, im.xdim + 1) - (im.xdim - 1) / 2) * im.psize
+    pos = (np.arange(npix) - (npix - 1) / 2) * psize
+    points = np.stack(np.meshgrid(pos, pos, indexing='ij'), axis=-1)
+
+    def resample(imvec):
+        arr = np.pad(np.reshape(imvec, (im.ydim, im.xdim)), 1)
+        interp = RegularGridInterpolator(
+            (y_in, x_in), arr, bounds_error=False, fill_value=0.0
+        )
+        return interp(points) * (psize / im.psize)**2
+
+    # Fraction of each input pixel row/column inside the new field of view
+    def inside(n):
+        c = (np.arange(n) - (n - 1) / 2) * im.psize
+        lo = np.maximum(c - im.psize / 2, -fov / 2)
+        hi = np.minimum(c + im.psize / 2, fov / 2)
+        return np.clip((hi - lo) / im.psize, 0.0, 1.0)
+
+    # Common flux correction from the primary polarization
+    prim = resample(im.imvec)
+    target = inside(im.ydim) @ im.imarr() @ inside(im.xdim)
+    fac = target / prim.sum() if prim.sum() != 0 else 1.0
+
+    # New image with the same metadata, then the other polarizations
+    arglist, argdict = im.image_args()
+    arglist[0], arglist[1] = prim * fac, psize
+    out = eh.image.Image(*arglist, **argdict)
+    for pol, imvec in im._imdict.items():
+        if pol != im.pol_prim and len(imvec):
+            out.add_pol_image(resample(imvec) * fac, pol)
+    return out
 
 def get_times_multiepoch(
         inpaths: str | list,

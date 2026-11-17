@@ -104,6 +104,8 @@ with ut.no_print():
         output=h.tflag['out']
     )
     obs = obs.flag_empty()
+    # Peak zero-baseline flux density (Jy)
+    fluxnorm = obs.get_zbl()
     obs = obs.norm_to_max()
 
     # Split data
@@ -241,7 +243,7 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params']
+    params=d_params['params'],
     batch_stats=d_batch_stats['batch_stats'],
     tx=optax.adamax(d_sched)
 )
@@ -453,10 +455,10 @@ for i in (pbar := tqdm(range(1, h.niter_0+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_0.png'
             )
@@ -772,10 +774,10 @@ for i in (pbar := tqdm(range(1, h.niter_1+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_1.png'
             )
@@ -791,8 +793,12 @@ print(
 Saving results...
     """
 )
-video.from_video(out, loss=lloss)
-video.plot_gif(s_out=s_out, d_out=d_out, outpath='./out_1.gif')
+video.from_video(out * fluxnorm, loss=lloss)
+video.plot_gif(
+    s_out=s_out * fluxnorm,
+    d_out=d_out * fluxnorm,
+    outpath='./out_1.gif'
+)
 
 # .......................................
 # Save video, gains, and model parameters
@@ -813,9 +819,10 @@ video.from_states(
     d_state,
     s_grid,
     d_grid,
-    lcurve,
-    min_lcurve,
-    amp_gains=amp_gains
+    lcurve * fluxnorm,
+    min_lcurve * fluxnorm,
+    amp_gains=amp_gains,
+    npix_train=h.npix_1
 )
 video.save_h5('./video_1.h5')
 video.save_gains('./gains_1.txt')
@@ -1123,10 +1130,10 @@ for i in (pbar := tqdm(range(1, h.niter_2+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_2.png'
             )
@@ -1142,8 +1149,12 @@ print(
 Saving results...
     """
 )
-video.from_video(out, loss=lloss)
-video.plot_gif(s_out=s_out, d_out=d_out, outpath='./out_2.gif')
+video.from_video(out * fluxnorm, loss=lloss)
+video.plot_gif(
+    s_out=s_out * fluxnorm,
+    d_out=d_out * fluxnorm,
+    outpath='./out_2.gif'
+)
 
 # .......................................
 # Save video, gains, and model parameters
@@ -1164,9 +1175,10 @@ video.from_states(
     d_state,
     s_grid,
     d_grid,
-    lcurve,
-    min_lcurve,
-    amp_gains=amp_gains
+    lcurve * fluxnorm,
+    min_lcurve * fluxnorm,
+    amp_gains=amp_gains,
+    npix_train=h.npix_2
 )
 video.save_h5('./video_2.h5')
 video.save_gains('./gains_2.txt')

@@ -120,7 +120,7 @@ class Image:
             inpath: Path to fits file.
         """
         image = eh.image.load_fits(inpath)
-        image = image.regrid_image(self.fov, self.npix)
+        image = ut.regrid_image(image, self.fov, self.npix)
         self.iarr = jnp.array(image.imarr())[..., jnp.newaxis]
 
     def add_constant_linpol(
@@ -151,21 +151,29 @@ class Image:
             self,
             state: Callable,
             grid: ArrayLike,
-            loss: list[float] | dict | None = None
+            loss: list[float] | dict | None = None,
+            npix_train: int | None = None
     ) -> None:
         """Create Image object from current network's state.
-        
+
+        The network's Stokes I output is in Jy per training pixel. When
+        `grid` has a different number of pixels than the training grid,
+        pass `npix_train` so that Stokes I is rescaled to Jy per pixel of
+        this image and the total flux density is preserved.
+
         Args:
             state: Current network's state.
             grid: Input space-time coordinates.
             loss: Current loss value.
+            npix_train: Number of pixels of the grid the network was trained on.
         """
         out, _ = state.apply_fn(
             {'params': state.params, 'batch_stats': state.batch_stats},
             grid, train=True, mutable=['batch_stats']
         )
+        fluxfac = 1.0 if npix_train is None else (npix_train / self.npix)**2
         polchan = out.shape[-1]
-        self.iarr = out[..., 0].reshape(self.npix, self.npix, 1)
+        self.iarr = out[..., 0].reshape(self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
             self.larr = out[..., 1].reshape(self.npix, self.npix, 1)
             self.xarr = jnp.arctan2(
@@ -229,7 +237,7 @@ class Image:
             blur: Blurring factor in uas.
         """
         init = eh.image.load_fits(inpath)
-        init = init.regrid_image(self.fov, self.npix)
+        init = ut.regrid_image(init, self.fov, self.npix)
         if blur > 0:
             init = init.blur_circ(blur*eh.RADPERUAS)
         init = init.imarr()
@@ -569,7 +577,7 @@ class Video:
         """
         video = eh.movie.load_hdf5(inpath).im_list()
         video = [
-            frame.regrid_image(self.fov, self.npix).imarr()
+            ut.regrid_image(frame, self.fov, self.npix).imarr()
             for frame in video
         ]
         self.iarr = jnp.array(video).reshape(-1, self.npix, self.npix, 1)
@@ -608,21 +616,29 @@ class Video:
             self,
             state: Callable,
             grid: ArrayLike,
-            loss: list[float] | dict | None = None
+            loss: list[float] | dict | None = None,
+            npix_train: int | None = None
     ) -> None:
         """Create Video object from current network's state.
-        
+
+        The network's Stokes I output is in Jy per training pixel. When `grid` 
+        has a different number of pixels than the training grid, pass 
+        `npix_train` so that Stokes I is rescaled to Jy per pixel of this video 
+        and the total flux density is preserved.
+
         Args:
             state: Current network's state.
             grid: Input space-time coordinates.
             loss: Current loss value.
+            npix_train: Number of pixels of the grid the network was trained on.
         """
         out, _ = state.apply_fn(
             {'params': state.params, 'batch_stats': state.batch_stats},
             grid, train=True, mutable=['batch_stats']
         )
+        fluxfac = 1.0 if npix_train is None else (npix_train / self.npix)**2
         polchan = out.shape[-1]
-        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1)
+        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
             self.larr = out[..., 1].reshape(-1, self.npix, self.npix, 1)
             self.xarr = jnp.arctan2(
@@ -645,13 +661,17 @@ class Video:
             lcurve: ArrayLike,
             min_lcurve: float,
             loss: list[float] | dict | None = None,
-            amp_gains: dict | None = None
+            amp_gains: dict | None = None,
+            npix_train: int | None = None
     ) -> None:
         """Create Video object from current networks' states.
 
-        Intended for re-sampling on a different grid of
-        space-time coordinates.
-        
+        Intended for re-sampling on a different grid of space-time coordinates. 
+        The networks' Stokes I output is in Jy per training pixel. When the 
+        grids have a different number of pixels than the training grids, pass 
+        `npix_train` so that Stokes I is rescaled to Jy per pixel of this video 
+        and the total flux density is preserved.
+
         Args:
             s_state: Current static network state.
             d_state: Current dynamic network state.
@@ -661,6 +681,8 @@ class Video:
             min_lcurve: Static component flux density.
             loss: Current loss value.
             amp_gains: Fitted visibility amplitude gains.
+            npix_train: Number of pixels of the grids the networks were
+                trained on.
         """
         static, _ = s_state.apply_fn(
             {'params': s_state.params, 'batch_stats': s_state.batch_stats},
@@ -673,8 +695,9 @@ class Video:
         mod_lcurve = lcurve - min_lcurve
         mod_lcurve = mod_lcurve.reshape(-1, 1, 1)
         out = static * min_lcurve + dynamic * mod_lcurve
+        fluxfac = 1.0 if npix_train is None else (npix_train / self.npix)**2
         polchan = out.shape[-1]
-        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1)
+        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1) * fluxfac
         if polchan > 1:
             self.larr = out[..., 1].reshape(-1, self.npix, self.npix, 1)
             self.xarr = jnp.arctan2(
@@ -740,7 +763,7 @@ class Video:
             fn: Time averaging function (np.mean, np.median, etc.).
         """
         init = eh.movie.load_hdf5(inpath).im_list()
-        init = [im.regrid_image(self.fov, self.npix) for im in init]
+        init = [ut.regrid_image(im, self.fov, self.npix) for im in init]
         if blur > 0: #TODO: before or after fn?
             init = [im.blur_circ(blur*eh.RADPERUAS) for im in init]
         init = [im.imarr() for im in init]
