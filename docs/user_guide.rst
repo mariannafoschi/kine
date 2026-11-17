@@ -97,7 +97,7 @@ repeated once per round (see e.g. :ref:`dynamic-imaging`).
    from jax import numpy as jnp
 
    import kine.utils as ut
-   import kine.video as vi
+   import kine.field as fi
    import kine.model as mo
    import kine.obsdata as ob
    import kine.trainer as tr
@@ -106,7 +106,7 @@ repeated once per round (see e.g. :ref:`dynamic-imaging`).
 
    # Initialize async worker
    q = queue.Queue()
-   ut.init_worker(vi.Video.async_plot, q)
+   ut.init_worker(fi.Video.async_plot, q)
 
 The five ``kine`` modules are always imported under these short aliases. The
 last two lines start a background thread that draws diagnostic figures while
@@ -115,8 +115,8 @@ onto ``q`` and the worker renders the PNG on the CPU without blocking. The
 asynchronous worker is not necessary if saving the images takes little time or 
 is not a bottleneck in the total runtime.
 
-Use ``vi.Video.async_plot`` when the reconstruction has a third coordinate
-(dynamic, multi-epoch, spectral) and ``vi.Image.async_plot`` for static imaging.
+Use ``fi.Video.async_plot`` when the reconstruction has a third coordinate
+(dynamic, multi-epoch, spectral) and ``fi.Image.async_plot`` for static imaging.
 
 
 2. Arguments, hyperparameters, seeds
@@ -583,23 +583,23 @@ While it is important that the initialization has roughly the right total flux
 and covers the region where the emission is expected, its detailed shape does 
 not affect the converged result.
 
-The initialization video (or image) is built with a :class:`kine.video.Video` (or
-:class:`kine.video.Image`) object:
+The initialization video (or image) is built with a :class:`kine.field.Video` (or
+:class:`kine.field.Image`) object:
 
 .. code-block:: python
 
-   init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    init_vid.add_tophat(lcurve, h.init_params)
    init_vid.plot()
 
-:meth:`~kine.video.Video.add_tophat` builds a blurred disk carrying the
+:meth:`~kine.field.Video.add_tophat` builds a blurred disk carrying the
 light-curve flux in each frame, from ``init_params``: ``fwhm`` (disk diameter in
 µas), ``blur`` (Gaussian blurring in µas), and ``posx``/``posy`` (offsets in
 pixels). The polarization channels can be initialized to constant values with 
-:meth:`~kine.video.Video.add_constant_linpol` /
-:meth:`~kine.video.Video.add_constant_circpol`. Alternatively the initialization 
-video can be created from a chosen input file with :meth:`~kine.video.Video.from_h5` 
-or :meth:`~kine.video.Video.add_video_i` (for Stokes I only).
+:meth:`~kine.field.Video.add_constant_linpol` /
+:meth:`~kine.field.Video.add_constant_circpol`. Alternatively the initialization 
+video can be created from a chosen input file with :meth:`~kine.field.Video.from_h5` 
+or :meth:`~kine.field.Video.add_video_i` (for Stokes I only).
 
 **Polarimetric initialization.** When Stokes I is fitted together with linear
 polarization, the initialization target must stack the Stokes I, linear 
@@ -608,7 +608,7 @@ the circular polarization fraction is appended as a fourth channel:
 
 .. code-block:: python
 
-   init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    init_vid.add_tophat(lcurve, h.init_params)              # tot. int.
    init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol.
    init_vid.add_constant_circpol(circpolfrac=0.05)         # circ. pol.
@@ -622,7 +622,7 @@ the circular polarization fraction is appended as a fourth channel:
 
 The channel order is fixed to :math:`(I, m_\ell, \chi, m_c)`. Each array has
 shape ``(ntimes, npix, npix, 1)``, or ``(npix, npix, 1)`` for a
-:class:`kine.video.Image`.
+:class:`kine.field.Image`.
 If Stokes I is instead held fixed and only the polarization is fitted with
 :class:`kine.model.NeuralFieldPol`, the targets are passed separately as
 ``init_vid_ml`` and ``init_vid_x`` (see :ref:`polarimetric-imaging`).
@@ -633,7 +633,7 @@ products:
 
 .. code-block:: python
 
-   init = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    lloss, loss = [], 0
 
    for i in (pbar := tqdm(range(1, h.initniter+1))):
@@ -713,7 +713,7 @@ gains together when ``visI`` is.
 
    tr.NPIX = h.npix
 
-   video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
+   video = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
    lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
    for i in (pbar := tqdm(range(1, h.niter+1))):
@@ -862,7 +862,7 @@ regularizers of the branch in use.
 
    # Re-sample the network on a finer grid
    grid_out = ut.get_grid(h.npix_out, h.npix_out, ntimes, times=times)
-   video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
+   video = fi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
    video.from_state(state, grid_out, npix_train=h.npix)
    video.save_h5('./output.h5')
 
@@ -883,21 +883,21 @@ produces evenly spaced frames from irregularly sampled observations.
 
    * - Method
      - Use
-   * - :meth:`~kine.video.Video.from_video` / :meth:`~kine.video.Image.from_image`
+   * - :meth:`~kine.field.Video.from_video` / :meth:`~kine.field.Image.from_image`
      - Populate the object from an array returned by ``train_step``.
-   * - :meth:`~kine.video.Video.from_state`
+   * - :meth:`~kine.field.Video.from_state`
      - Evaluate a trained network on an arbitrary grid.
-   * - :meth:`~kine.video.Video.from_states`
+   * - :meth:`~kine.field.Video.from_states`
      - Evaluate and recombine the static and dynamic networks.
-   * - :meth:`~kine.video.Video.plot`
+   * - :meth:`~kine.field.Video.plot`
      - Diagnostic figure: frames, loss, and polarization panels if present.
-   * - :meth:`~kine.video.Video.plot_gif`
+   * - :meth:`~kine.field.Video.plot_gif`
      - Saves video as GIF.
-   * - :meth:`~kine.video.Video.save_h5`
+   * - :meth:`~kine.field.Video.save_h5`
      - Saves video in HDF5 format.
-   * - :meth:`~kine.video.Video.save_fits`
+   * - :meth:`~kine.field.Video.save_fits`
      - Saves image in FITS format.
-   * - :meth:`~kine.video.Video.save_gains`
+   * - :meth:`~kine.field.Video.save_gains`
      - Saves fitted gains in a TXT file.
 
 
@@ -945,8 +945,8 @@ Static imaging
 
 Reconstruct a single image from a single observation.
 
-- *Block 1* — use ``vi.Image.async_plot`` and the :class:`kine.video.Image`
-  class throughout, instead of :class:`kine.video.Video`.
+- *Block 1* — use ``fi.Image.async_plot`` and the :class:`kine.field.Image`
+  class throughout, instead of :class:`kine.field.Video`.
 - *Block 3* — no ``split_obs``: the whole observation is fitted as one block.
   The flux constraint is the single number ``totflux = obs.get_zbl()``.
 - *Block 4* — use a 2D grid, ``ut.get_grid(h.npix, h.npix)``. ``nposenc`` 
@@ -975,7 +975,7 @@ Reconstruct a single image from a single observation.
   .. code-block:: python
 
      grid_out = ut.get_grid(h.npix_out, h.npix_out)
-     image = vi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
+     image = fi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
      image.from_state(state, grid_out, npix_train=h.npix)
      image.save_fits('./output_image.fits')
 
@@ -1145,7 +1145,7 @@ both networks to a disk, starts fitting the gains (``ut.Schedule(5e-5, 1e-3, h.n
            )
        )
 
-The result is written with :meth:`~kine.video.Video.from_states`, which
+The result is written with :meth:`~kine.field.Video.from_states`, which
 evaluates both networks and recombines them with the light curve, plus
 ``save_h5`` and ``save_gains``. The light curve and static flux passed to it are
 rescaled to Jy, so the saved video is in physical units:
@@ -1156,7 +1156,7 @@ rescaled to Jy, so the saved video is in physical units:
                      lcurve * fluxnorm, min_lcurve * fluxnorm,
                      amp_gains=amp_gains, npix_train=h.npix_1)
 
-**Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.video.Video.from_h5` rather 
+**Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.field.Video.from_h5` rather 
 than from a disk. The dynamic component in the initialization video is blurred 
 (``blur=0`` with ``fn=np.median`` for the static field, ``blur=30`` for the
 dynamic one). Then the dynamic network switches to the sharper activation
@@ -1209,7 +1209,7 @@ complex visibilities.
 
   .. code-block:: python
 
-     init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+     init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
      init_vid.add_video_i(par.obs.replace('uvfits', 'hdf5'))
      init_vid.add_constant_linpol()
 
@@ -1252,7 +1252,7 @@ complex visibilities.
 
   .. code-block:: python
 
-     video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
+     video = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
      video.iarr = init_vid.iarr.copy()
      ...
      video.from_video(out, loss=lloss)

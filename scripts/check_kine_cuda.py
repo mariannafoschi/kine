@@ -44,7 +44,7 @@ def main() -> int:
         "kine.model",
         "kine.obsdata",
         "kine.trainer",
-        "kine.video",
+        "kine.field",
         "kine.utils",
     ]
     for module in modules:

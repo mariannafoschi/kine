@@ -43,7 +43,7 @@ from flax import linen as nn
 from jax import numpy as jnp
 
 import kine.utils as ut
-import kine.video as vi
+import kine.field as fi
 import kine.model as mo
 import kine.obsdata as ob
 import kine.trainer as tr
@@ -53,7 +53,7 @@ warnings.filterwarnings('ignore')
 
 # Initialize async worker
 q = queue.Queue()
-ut.init_worker(vi.Video.async_plot, q)
+ut.init_worker(fi.Video.async_plot, q)
 
 # ______________________________________________________________________________
 # Load hyperparameters and set RNG keys
@@ -190,7 +190,7 @@ state = tr.Trainer.create(
 # Create dynamic initialization
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
 init_vid.add_video_i(par.obs.replace('uvfits', 'hdf5'))
 init_vid.add_constant_linpol()
 init_vid.plot()
@@ -199,7 +199,7 @@ init_vid.plot()
 # Dynamic initialization training
 
 # Initialize video and loss
-init = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+init = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
 init.iarr = init_vid.iarr.copy()
 lloss, loss = [], 0
 
@@ -247,7 +247,7 @@ q.join()
 # Traininig loop
 
 # Initialize video and loss
-video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
+video = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
 video.iarr = init_vid.iarr.copy()
 lloss, loss = {dp: [] for dp in h.data_prod} | {'overlap': []}, 0
 

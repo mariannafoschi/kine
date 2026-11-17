@@ -41,7 +41,7 @@ from flax import linen as nn
 from jax import numpy as jnp
 
 import kine.utils as ut
-import kine.video as vi
+import kine.field as fi
 import kine.model as mo
 import kine.obsdata as ob
 import kine.trainer as tr
@@ -51,7 +51,7 @@ warnings.filterwarnings('ignore')
 
 # Initialize async worker
 q = queue.Queue()
-ut.init_worker(vi.Image.async_plot, q)
+ut.init_worker(fi.Image.async_plot, q)
 
 # ______________________________________________________________________________
 # Load hyperparameters and set RNG keys
@@ -159,7 +159,7 @@ print("-------\nInitializing network\n")
 # ...........................
 # Create initialization image
 
-init_im = vi.Image(
+init_im = fi.Image(
     h.npix,
     fov,
     obs.ra,
@@ -173,7 +173,7 @@ init_im.plot(outpath='./init_image.png')
 # Initialization training
 
 # Initialize image and loss
-init = vi.Image(
+init = fi.Image(
     h.npix,
     fov,
     obs.ra,
@@ -221,7 +221,7 @@ print("-------\nTraining\n")
 # Traininig loop
 
 # Initialize image and loss
-image = vi.Image(h.npix, fov, obs.ra, obs.dec, h.niter)
+image = fi.Image(h.npix, fov, obs.ra, obs.dec, h.niter)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
 # Looping over epochs
@@ -266,7 +266,7 @@ print("-------\nSaving results...\n")
 grid_out = ut.get_grid(h.npix_out, h.npix_out)
 
 # Generate output image
-image = vi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
+image = fi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
 image.from_state(state, grid_out, npix_train=h.npix)
 image.plot(outpath='./output_image.png')
 image.save_fits('./output_image.fits')

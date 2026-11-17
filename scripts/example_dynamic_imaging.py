@@ -48,7 +48,7 @@ from flax import linen as nn
 from jax import numpy as jnp
 
 import kine.utils as ut
-import kine.video as vi
+import kine.field as fi
 import kine.model as mo
 import kine.obsdata as ob
 import kine.trainer as tr
@@ -58,7 +58,7 @@ warnings.filterwarnings('ignore')
 
 # Initialize async worker
 q = queue.Queue()
-ut.init_worker(vi.Video.async_plot, q)
+ut.init_worker(fi.Video.async_plot, q)
 
 # ______________________________________________________________________________
 # Load hyperparameters and set RNG keys
@@ -255,7 +255,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_0,
     fov,
@@ -267,7 +267,7 @@ init_img.add_tophat(jnp.ones([1]), h.init_params)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
+init_vid = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
 init_vid.plot()
 
@@ -275,7 +275,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_0,
     fov,
@@ -325,7 +325,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
+d_init = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -417,7 +417,7 @@ pg_state = tr.Trainer.create(
 # Traininig loop
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.niter_0)
+video = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.niter_0)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'border': [], 'min_dyn': []}, 0
 
 # Looping over epochs
@@ -573,7 +573,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_1,
     fov,
@@ -585,7 +585,7 @@ init_img.add_tophat(jnp.ones([1]), h.init_params)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
+init_vid = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
 init_vid.plot()
 
@@ -593,7 +593,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_1,
     fov,
@@ -643,7 +643,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
+d_init = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -732,7 +732,7 @@ pg_state = tr.Trainer.create(
 tr.NPIX = h.npix_1
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
+video = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
 lloss = {dp: [] for dp in h.data_prod} \
       | {'border': [], 's_flux': [], 'd_flux': []}
 loss = 0
@@ -813,7 +813,7 @@ print(
 Sampling network on a finer grid and saving results...
     """
 )
-video = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
+video = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
 video.from_states(
     s_state,
     d_state,
@@ -933,7 +933,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_2,
     fov,
@@ -945,7 +945,7 @@ init_img.from_h5('./video_1.h5', blur=0, fn=np.median)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
+init_vid = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
 init_vid.from_h5('./video_1.h5', blur=30, fn=np.median)
 init_vid.plot()
 
@@ -953,7 +953,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_2,
     fov,
@@ -1003,7 +1003,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
+d_init = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -1087,7 +1087,7 @@ pg_state = tr.Trainer.create(
 tr.NPIX = h.npix_2
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
+video = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
 lloss = {dp: [] for dp in h.data_prod} \
       | {'border': [], 's_flux': [], 'd_flux': []}
 loss = 0
@@ -1169,7 +1169,7 @@ print(
 Sampling network on a finer grid and saving results...
     """
 )
-video = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
+video = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
 video.from_states(
     s_state,
     d_state,

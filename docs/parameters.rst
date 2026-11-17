@@ -269,8 +269,8 @@ See also :doc:`user_guide` block 7.
      - dict
      - see below
      - Geometry of the disk the network is pre-trained on, passed to
-       :meth:`~kine.video.Video.add_tophat` /
-       :meth:`~kine.video.Image.add_tophat`.
+       :meth:`~kine.field.Video.add_tophat` /
+       :meth:`~kine.field.Image.add_tophat`.
 
 **Initialization example:**
 
@@ -287,8 +287,8 @@ per frame) or from the zero-baseline flux (static imaging).
 
 ``init_params`` is not used by ``example_dynamic_imaging_pol.py``, which
 initializes from a previously reconstructed Stokes I video with
-:meth:`~kine.video.Video.add_video_i` and
-:meth:`~kine.video.Video.add_constant_linpol` instead.
+:meth:`~kine.field.Video.add_video_i` and
+:meth:`~kine.field.Video.add_constant_linpol` instead.
 
 
 Training
@@ -325,7 +325,7 @@ See also :doc:`user_guide` blocks 6, 7 and 9.
      - ``10000``
      - Number of data training iterations. Indexed variants
        ``niter_0/1/2`` per pipeline round. Also passed to the
-       :class:`~kine.video.Video` / :class:`~kine.video.Image` constructor and,
+       :class:`~kine.field.Video` / :class:`~kine.field.Image` constructor and,
        in dynamic imaging, used as the length of the gain learning-rate
        schedule.
    * - ``nposenc``

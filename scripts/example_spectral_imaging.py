@@ -46,7 +46,7 @@ from flax import linen as nn
 from jax import numpy as jnp
 
 import kine.utils as ut
-import kine.video as vi
+import kine.field as fi
 import kine.model as mo
 import kine.obsdata as ob
 import kine.trainer as tr
@@ -56,7 +56,7 @@ warnings.filterwarnings('ignore')
 
 # Initialize async worker
 q = queue.Queue()
-ut.init_worker(vi.Video.async_plot, q)
+ut.init_worker(fi.Video.async_plot, q)
 
 # ______________________________________________________________________________
 # Load hyperparameters and set RNG keys
@@ -212,7 +212,7 @@ print("-------\nInitializing network...\n")
 # .....................
 # Create initialization
 
-init_vid = vi.Video(
+init_vid = fi.Video(
     freqs,
     h.npix,
     fov,
@@ -228,7 +228,7 @@ init_vid.plot(outpath=outdir+'init_image.png')
 # Initialization training
 
 # Initialize video and loss
-init = vi.Video(
+init = fi.Video(
     freqs,
     h.npix,
     fov,
@@ -281,7 +281,7 @@ tr.NPIX = h.npix
 # Traininig loop
 
 # Initialize video and loss
-video = vi.Video(freqs, h.npix, fov, obs.ra, obs.dec, h.niter, dates=labels)
+video = fi.Video(freqs, h.npix, fov, obs.ra, obs.dec, h.niter, dates=labels)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
 # Looping over epochs
@@ -335,7 +335,7 @@ grid = ut.get_grid(h.npix_out, h.npix_out, nfreqs, times=freqs)
 
 # Generate output video
 print("-------\nSampling network on a finer grid and saving results...\n")
-video = vi.Video(freqs, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=labels)
+video = fi.Video(freqs, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=labels)
 video.from_state(state, grid, npix_train=h.npix)
 video.save_h5(outdir+'output_multifreq2.h5')
 video.plot_gif(outpath=outdir+'output_multifreq2.gif')
