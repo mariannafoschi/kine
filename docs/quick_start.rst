@@ -18,20 +18,20 @@ Running the code
 ----------------
 
 Once ``kine`` is installed, it is possible to run one of the examples codes in 
-``scripts/``. We provide examples for static, dynamic, multiepoch, polarimetric, 
-and spectral imaging.
+``scripts/``. We provide examples for static, dynamic, multiepoch, polarimetric,
+spectral, and spectral-multiepoch imaging.
 
 The code can be run on a single observation file with:
 
 .. code-block:: bash
 
-   python example_script.py -obs path/to/observations.uvfits -yml path/to/parameters.yml
+   python example_script.py -obs path/to/observations.uvfits -yml path/to/parameters.yml -out /path/to/output
 
 and on multiple observation files, with:
 
 .. code-block:: bash
 
-   python example_script.py -obs path/to/obs/folder/ -yml path/to/parameters.yml
+   python example_script.py -obs path/to/obs/folder/ -yml path/to/parameters.yml -out /path/to/output
 
 Alternatively ``kine`` can be run through the provided bash wrapper
 
@@ -39,7 +39,8 @@ Alternatively ``kine`` can be run through the provided bash wrapper
 
    bash run_kine.sh
 
-which assumes the same folder structure as the repository.
+which assumes the same folder structure as the repository and saves the results
+in ``out/`` at the root of the repository.
 
 **Input requirements:**
 
@@ -47,6 +48,8 @@ which assumes the same folder structure as the repository.
 - A YAML parameter file specifying imaging settings (see :doc:`parameters`).
 
 **Output files:**
+
+The results are saved in the folder passed with ``-out``. The folder is created if it does not exist.
 
 - Diagnostic PNG plots updating every few iterations, showing reconstructed frames and loss curves.
 - Animated GIF of the reconstructed video.

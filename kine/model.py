@@ -84,6 +84,31 @@ def posenc(x: ArrayLike, degs: tuple[int]) -> Array:
         out.append(sins)
     return jnp.concatenate(out, axis=-1)
 
+class _HiddenLayer(nn.Module):
+    """One hidden layer of the neural fields: dense, batch norm, activation.
+
+    The dense and batch norm layers are created by the parent network and
+    only applied here, so that their parameters keep the parent's names
+    (``Dense_i``, ``BatchNorm_i``) and the same initialization. Wrapping this
+    module in ``nn.remat`` recomputes the layer's activations in the backward
+    pass instead of storing them, which reduces the training memory.
+
+    Args:
+        dense: Dense layer.
+        bnorm: Batch normalization layer, or None.
+        activ: Activation function.
+    """
+
+    dense: nn.Module
+    bnorm: nn.Module | None
+    activ: Callable[..., Any]
+
+    def __call__(self, x: ArrayLike) -> Array:
+        x = self.dense(x)
+        if self.bnorm is not None:
+            x = self.bnorm(x)
+        return self.activ(x)
+
 class NeuralField(nn.Module):
     """Neural network modeling a total intensity or full polarimetric video.
     
@@ -104,6 +129,9 @@ class NeuralField(nn.Module):
         skipat: Skip connection layer
         scaling_i: Sigmoid scaling for Stokes I ([0, 1] -> [0, scaling_i])
         scaling_ml: Sigmoid scaling for ml ([0, 1] -> [0, scaling_ml])
+        remat: If true, recompute the hidden layers in the backward pass
+            instead of storing their activations. Reduces the training
+            memory at the cost of extra computation.
     """
 
     posenc_deg: tuple[int] = (0, 0, 0)
@@ -117,6 +145,7 @@ class NeuralField(nn.Module):
     skipat: int = 0
     scaling_i: float = 1.0
     scaling_ml: float = 1.0
+    remat: bool = False
 
     @nn.compact
     def __call__(self, x: ArrayLike, train: bool) -> Array:
@@ -140,11 +169,13 @@ class NeuralField(nn.Module):
         # Init skip connection
         skip = 0
         # Multi Layer Perceptron
+        hidden_layer = nn.remat(_HiddenLayer) if self.remat else _HiddenLayer
         for i in range(self.depth+1):
-            x = dense_layer(self.width)(x)
-            if self.do_bnorm:
-                x = bnorm_layer()(x)
-            x = self.activ(x)
+            x = hidden_layer(
+                dense_layer(self.width),
+                bnorm_layer() if self.do_bnorm else None,
+                self.activ
+            )(x)
             # Save output for skip connection
             if i == self.skipat:
                 skip += x
@@ -172,6 +203,134 @@ class NeuralField(nn.Module):
             )
         return x
 
+class NeuralFieldSpectral(nn.Module):
+    """Neural network modeling a multi-frequency total intensity video.
+
+    Spectral emission model for multi-frequency multi-epoch imaging, used as
+    an alternative to a free 4D :class:`NeuralField` that takes the frequency
+    as a fourth input coordinate. This network takes the space-time
+    coordinates (x, y, t) only, and predicts at each of them the parameters
+    of a power-law spectrum with an optional curvature term:
+
+    .. math::
+
+        I(x, y, t, \\nu) = I_0(x, y, t)\\,\\exp\\left[
+            \\alpha(x, y, t)\\,\\log(\\nu/\\nu_\\mathrm{ref})
+            + \\beta(x, y, t)\\,\\log^2(\\nu/\\nu_\\mathrm{ref})\\right]
+
+    Coupling the frequencies through this model imposes a stronger prior than a
+    free 4D field when only a few simultaneous bands are available, and gives
+    the spectral index :math:`\\alpha` as a direct output. The spectral
+    parameters are predicted by a zero-initialized output layer, so the
+    spectrum starts flat (:math:`\\alpha = \\beta = 0`).
+    For spectral imaging of a single epoch, the network takes the space
+    coordinates (x, y) only and predicts one image of spectral parameters.
+
+    Args:
+        posenc_deg: Degrees of positional encoding for (t, x, y), or (x, y).
+        outdim: Number of spectral parameters, 2 for a power law
+            (I0, alpha) or 3 to add the curvature beta.
+        depth: Number of hidden layers.
+        width: Number of neurons in each hidden layer.
+        activ: Activation function for hidden layers.
+        outactiv: Output activation function for Stokes I0.
+        outshift: Output activation function shift.
+        do_bnorm: If true, do batch normalization.
+        skipat: Skip connection layer.
+        scaling_i: Sigmoid scaling for Stokes I0 ([0, 1] -> [0, scaling_i]).
+        alpha_range: Bound of the spectral index,
+            alpha in [-alpha_range, alpha_range].
+        beta_range: Bound of the curvature, beta in [-beta_range, beta_range].
+        remat: If true, recompute the hidden layers in the backward pass
+            instead of storing their activations. Reduces the training
+            memory at the cost of extra computation.
+    """
+
+    posenc_deg: tuple[int] = (0, 0, 0)
+    outdim: int = 2
+    depth: int = 6
+    width: int = 256
+    activ: Callable[..., Any] = nn.gelu
+    outactiv: Callable[..., Any] = nn.softplus
+    outshift: int = 10
+    do_bnorm: bool = True
+    skipat: int = 0
+    scaling_i: float = 1.0
+    alpha_range: float = 3.0
+    beta_range: float = 3.0
+    remat: bool = False
+
+    @nn.compact
+    def __call__(self, x: ArrayLike, train: bool) -> Array:
+        """Applies the Neural Field to the input grid of coordinates.
+
+        Args:
+            x: Grid of space-time coordinates (t, x, y).
+            train: If true, compute batch norm statistics using running average.
+
+        Returns:
+            Spectral parameters at coordinates (x, y, t).
+        """
+        # Layer creation functions
+        dense_layer = partial(
+            nn.Dense,
+            kernel_init=nn.initializers.he_uniform()
+        )
+        bnorm_layer = partial(nn.BatchNorm, use_running_average=not train)
+        # Positional Encoding
+        x = posenc(x, self.posenc_deg)
+        # Init skip connection
+        skip = 0
+        # Multi Layer Perceptron, optionally recomputing the hidden layers in
+        # the backward pass to save memory
+        hidden_layer = nn.remat(_HiddenLayer) if self.remat else _HiddenLayer
+        for i in range(self.depth+1):
+            x = hidden_layer(
+                dense_layer(self.width),
+                bnorm_layer() if self.do_bnorm else None,
+                self.activ
+            )(x)
+            # Save output for skip connection
+            if i == self.skipat:
+                skip += x
+        # Add skip connection and final output layers, the spectral one
+        # zero-initialized so that the spectrum starts flat
+        x += skip
+        i0 = dense_layer(1)(x)
+        spec = nn.Dense(self.outdim - 1, kernel_init=nn.initializers.zeros)(x)
+        # Rescale outputs with final activations, where
+        # out[...,0] = Stokes I0 at the reference frequency
+        # out[...,1] = spectral index alpha, within [-alpha_range, alpha_range]
+        # out[...,2] = curvature beta, within [-beta_range, beta_range]
+        i0 = self.outactiv(i0 - self.outshift) * self.scaling_i
+        bounds = jnp.array([self.alpha_range, self.beta_range][:self.outdim-1])
+        spec = (nn.sigmoid(spec) - 0.5) * 2 * bounds
+        return jnp.concatenate([i0, spec], axis=-1)
+
+    @staticmethod
+    def expand(netout: ArrayLike, lognu: ArrayLike) -> Array:
+        """Taylor expand the video in terms of log frequencies using the 
+        spectral index and the spectral curvature.
+
+        Args:
+            netout: Network output at each epoch, of shape (nt, npix, outdim),
+                or (npix, outdim) for a single epoch.
+            lognu: Log-frequency offsets log(nu/nu_ref) of shape (nf,), from
+                :func:`kine.utils.get_lognu`.
+
+        Returns:
+            Stokes I video of shape (nt*nf, npix, 1), with the frames in
+            epoch-major order (frame k is epoch k // nf and band k % nf).
+        """
+        if netout.ndim == 2:                             # single epoch
+            netout = netout[None]
+        lognu = lognu[None, :, None]                     # (1, nf, 1)
+        expo = netout[:, None, :, 1] * lognu             # (nt, nf, npix)
+        if netout.shape[-1] == 3:
+            expo = expo + netout[:, None, :, 2] * lognu**2
+        video = netout[:, None, :, 0] * jnp.exp(expo)    # (nt, nf, npix)
+        return video.reshape(-1, netout.shape[1], 1)
+
 class NeuralFieldPol(nn.Module):
     """Neural network modeling a linear polarization video.
     
@@ -191,6 +350,9 @@ class NeuralFieldPol(nn.Module):
         do_bnorm: If true, do batch normalization
         skipat: Skip connection layer
         scaling_ml: Sigmoid scaling for ml ([0, 1] -> [0, scaling_ml])
+        remat: If true, recompute the hidden layers in the backward pass
+            instead of storing their activations. Reduces the training
+            memory at the cost of extra computation.
     """
 
     posenc_deg: tuple[int] = (0, 0, 0)
@@ -203,6 +365,7 @@ class NeuralFieldPol(nn.Module):
     do_bnorm: bool = True
     skipat: int = 0
     scaling_ml: float = 1.0
+    remat: bool = False
 
     @nn.compact
     def __call__(self, x: ArrayLike, train: bool) -> Array:
@@ -225,12 +388,15 @@ class NeuralFieldPol(nn.Module):
         x = posenc(x, self.posenc_deg)
         # Init skip connection
         skip = 0
-        # Multi Layer Perceptron
+        # Multi Layer Perceptron, optionally recomputing the hidden layers in
+        # the backward pass to save memory
+        hidden_layer = nn.remat(_HiddenLayer) if self.remat else _HiddenLayer
         for i in range(self.depth+1):
-            x = dense_layer(self.width)(x)
-            if self.do_bnorm:
-                x = bnorm_layer()(x)
-            x = self.activ(x)
+            x = hidden_layer(
+                dense_layer(self.width),
+                bnorm_layer() if self.do_bnorm else None,
+                self.activ
+            )(x)
             # Save output for skip connection
             if i == self.skipat:
                 skip += x
@@ -255,13 +421,13 @@ class AmplitudeGains(nn.Module):
         lower: Gains values lower limit.
         upper: Gains values upper limit.
         nsites: Number of telescopes.
-        ntimes: Number of time segments over which gains are computed.
+        nframes: Number of frames over which gains are computed.
     """
 
     lower: ArrayLike
     upper: ArrayLike
     nsites: int = 8
-    ntimes: int = 99
+    nframes: int = 99
 
     def clipping_ag(self, x: ArrayLike, site: str) -> Array:
         """Clip amplitude gains within specified range.
@@ -296,7 +462,7 @@ class AmplitudeGains(nn.Module):
         # Initialize gains to 1
         gains = self.param(
             'gains',
-            lambda *_: jnp.ones((self.nsites, self.ntimes))
+            lambda *_: jnp.ones((self.nsites, self.nframes))
         )
         # Select telescopes indices and corresponding gains
         i = baselines[frames, :, 0]
@@ -310,11 +476,11 @@ class PhaseGains(nn.Module):
     
     Args:
         nsites: Number of telescopes.
-        ntimes: Number of time segments over which gains are computed.
+        nframes: Number of frames over which gains are computed.
     """
 
     nsites: int = 8
-    ntimes: int = 99
+    nframes: int = 99
 
     def clipping_pg(self, x: ArrayLike) -> Array:
         """Clip phase gains to the [-pi,pi] interval.
@@ -342,7 +508,7 @@ class PhaseGains(nn.Module):
         # Initialize gains to 0
         gains = self.param(
             'gains',
-            lambda *_: jnp.zeros((self.nsites, self.ntimes))
+            lambda *_: jnp.zeros((self.nsites, self.nframes))
         )
         # Select telescopes indices and corresponding gains
         i = baselines[frames, :, 0]
@@ -360,13 +526,13 @@ class _ComplexGains(nn.Module):
         lower: Gain lower value allowed.
         upper: Gain upper value allowed.
         nsites: Number of telescopes.
-        ntimes: Number of time segments over which gains are computed.
+        nframes: Number of frames over which gains are computed.
     """
 
     lower: ArrayLike
     upper: ArrayLike
     nsites: int = 8
-    ntimes: int = 99
+    nframes: int = 99
 
     def clipping_ag(self, x, site):
         """Clip amplitude gains within specified range"""
@@ -386,7 +552,7 @@ class _ComplexGains(nn.Module):
         # Initialize gains to 1
         gains = self.param(
             'gains',
-            lambda *_: jnp.ones((self.nsites, self.ntimes),
+            lambda *_: jnp.ones((self.nsites, self.nframes),
                                 dtype=jnp.complex64)
         )
         # Select telescopes indices and corresponding gains

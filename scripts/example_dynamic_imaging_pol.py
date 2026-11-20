@@ -26,6 +26,7 @@ References:
     Sagittarius A* video reconstruction with kine" In prep. (2026).
 """
 
+import os
 import queue
 import argparse
 import warnings
@@ -62,6 +63,7 @@ ut.init_worker(fi.Video.async_plot, q)
 par = argparse.ArgumentParser()
 par.add_argument('-obs', type=str, help='uvfits file name')
 par.add_argument('-yml', type=str, help='hyperparameter file name')
+par.add_argument('-out', type=str, required=True, help='output folder name')
 par = par.parse_args()
 
 # Load hyperparameters from YAML file
@@ -72,6 +74,10 @@ h = ut.HyperParams(h)
 # Set RNG keys
 rkey = jax.random.PRNGKey(h.seed)
 np.random.seed(h.seed)
+
+# Make output directory if it does not exist
+outdir = os.path.join(par.out, '')
+os.makedirs(outdir, exist_ok=True)
 
 # ______________________________________________________________________________
 # Load and pre-process data
@@ -160,16 +166,10 @@ network = mo.NeuralFieldPol(
     activ=sharpgelu,
     outactiv=nn.sigmoid,
     outshift=h.outshift,
-    scaling_ml=h.scaling_ml
+    scaling_ml=h.scaling_ml,
+    remat=h.remat
 )
-batch_stats = network.init(
-    rkey,
-    jnp.ones([grid.shape[-1]]), train=True
-)
-params = network.init(
-    rkey,
-    jnp.ones([grid.shape[-1]]), train=True
-)
+variables = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
 
 # Schedule and train state
 sched = optax.piecewise_constant_schedule(
@@ -178,8 +178,8 @@ sched = optax.piecewise_constant_schedule(
 )
 state = tr.Trainer.create(
     apply_fn=network.apply,
-    params=params['params'],
-    batch_stats=batch_stats['batch_stats'],
+    params=variables['params'],
+    batch_stats=variables['batch_stats'],
     tx=optax.adamax(sched)
 )
 
@@ -193,7 +193,7 @@ state = tr.Trainer.create(
 init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
 init_vid.add_video_i(par.obs.replace('uvfits', 'hdf5'))
 init_vid.add_constant_linpol()
-init_vid.plot()
+init_vid.plot(outpath=outdir+'tmp.png')
 
 # ...............................
 # Dynamic initialization training
@@ -233,7 +233,7 @@ for i in (pbar := tqdm(range(1, h.initniter+1))):
                 video=init,
                 out=out,
                 loss=lloss,
-                outpath='./init_pol.png'
+                outpath=outdir+'init_pol.png'
             )
         )
 
@@ -282,7 +282,7 @@ for i in (pbar := tqdm(range(1, h.niter+1))):
                 video=video,
                 out=out,
                 loss=lloss,
-                outpath='./out_pol.png'
+                outpath=outdir+'out_pol.png'
             )
         )
 
@@ -297,5 +297,5 @@ Saving results...
     """
 )
 video.from_video(out, loss=lloss)
-video.plot_gif(outpath='./out_pol.gif')
-video.save_h5('./video_pol.h5')
+video.plot_gif(outpath=outdir+'out_pol.gif')
+video.save_h5(outdir+'video_pol.h5')

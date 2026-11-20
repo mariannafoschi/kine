@@ -1,0 +1,71 @@
+# Data pre-processing
+# -----------------------------
+
+# Time averaging (seconds)
+tavg: 0
+
+# Systematic noise (fraction)
+syserr: 0.01
+
+# Frequency clustering tolerance (Hz) for grouping bands across epochs
+freq_tol: 1.0e+9
+
+# Coordinates and data products
+# -----------------------------
+
+# Field of view
+fov_uas: 6000
+
+# Space resolution
+npix: 280
+npix_out: 280
+
+# Data products
+data_prod: [visI]
+
+# Spectral modeling
+# -----------------------------
+
+# Emission model: 'free', 'powerlaw' or 'curved'
+spectral_model: powerlaw
+
+# Reference frequency (GHz) of the spectral model
+nu_ref_ghz: 43
+
+# Spectral index bound of the spectral model
+alpha_range: 3.0
+
+# Network initialization
+# -----------------------------
+
+init_params:
+  fwhm: 200 # (uas)
+  blur: 100 # (uas)
+  posx: -100 # (px) negative is left
+  posy: -100 # (px) negative is up
+
+# Training
+# -----------------------------
+
+# Initialization seed
+seed: 1
+
+# Number of epochs
+niter: 10000
+initniter: 3000
+
+# Coordinate dilation factors
+tdil: 10
+fdil: 10
+
+# Degrees of positional encoding ([t, f, x, y])
+nposenc: [0, 0, 0, 0]
+
+# Network parameters
+depth: 6
+width: 256
+outshift: 10
+scaling_i: 1
+
+# Recompute layers instead of storing them (less memory, more compute)
+remat: true

@@ -8,6 +8,7 @@ model
 
    ~kine.model.NeuralField
    ~kine.model.NeuralFieldPol
+   ~kine.model.NeuralFieldSpectral
 
 **Telescope gain modules**
 
@@ -28,6 +29,8 @@ model
 .. autoclass:: kine.model.NeuralField
 
 .. autoclass:: kine.model.NeuralFieldPol
+
+.. autoclass:: kine.model.NeuralFieldSpectral
 
 .. autoclass:: kine.model.AmplitudeGains
 

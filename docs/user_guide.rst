@@ -81,6 +81,7 @@ repeated once per round (see e.g. :ref:`dynamic-imaging`).
 
 .. code-block:: python
 
+   import os
    import queue
    import argparse
    import warnings
@@ -127,6 +128,7 @@ Use ``fi.Video.async_plot`` when the reconstruction has a third coordinate
    par = argparse.ArgumentParser()
    par.add_argument('-obs', type=str, help='uvfits file name')
    par.add_argument('-yml', type=str, help='hyperparameter file name')
+   par.add_argument('-out', type=str, required=True, help='output folder name')
    par = par.parse_args()
 
    with open(par.yml, 'r') as f:
@@ -136,8 +138,14 @@ Use ``fi.Video.async_plot`` when the reconstruction has a third coordinate
    rkey = jax.random.PRNGKey(h.seed)
    np.random.seed(h.seed)
 
+   # Make output directory if it does not exist
+   outdir = os.path.join(par.out, '')
+   os.makedirs(outdir, exist_ok=True)
+
 ``-obs`` is a path to a single UV-FITS file, or a directory when several
-observations are imaged together. ``-yml`` is the parameter file.
+observations are imaged together. ``-yml`` is the parameter file. ``-out`` is the
+path of the folder where all figures, videos and gains of the run are
+saved. It is required, and the folder is created if it does not exist.
 
 :class:`kine.utils.HyperParams` simply turns the parsed YAML dictionary into an
 object, so that ``h.npix`` can be written instead of ``h['npix']``. It performs
@@ -471,14 +479,16 @@ is only there to speed up this (purely CPU-side) preparation.
        activ=nn.gelu,                # hidden activation
        outactiv=nn.softplus,         # output activation for Stokes I
        outshift=h.outshift,          # shift before the output activation
-       scaling_i=h.scaling_i         # Stokes I output scaling
+       scaling_i=h.scaling_i,        # Stokes I output scaling
+       remat=h.remat                 # recompute hidden layers in backprop
    )
-   params      = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
-   batch_stats = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
+   variables = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
 
 :class:`kine.model.NeuralField` is an MLP with batch normalization on every
-hidden layer and a residual skip connection from the firdt layer to the output 
-one.
+hidden layer and a residual skip connection from the firdt layer to the output
+one. ``network.init`` runs the network once on a dummy input and returns all of
+its initial variables: the trainable weights under ``'params'`` and the batch
+normalization running statistics under ``'batch_stats'``.
 
 Positional encoding
 ...................
@@ -554,8 +564,8 @@ The remaining channels use fixed sigmoids and are not configurable.
    )
    state = tr.Trainer.create(
        apply_fn=network.apply,
-       params=params['params'].unfreeze(),
-       batch_stats=batch_stats['batch_stats'].unfreeze(),
+       params=variables['params'],
+       batch_stats=variables['batch_stats'],
        tx=optax.adamax(sched)
    )
 
@@ -656,7 +666,7 @@ products:
 
        if i == 1 or i % 500 == 0 or i == h.initniter:
            q.put(dict(video=init, out=out, loss=lloss,
-                      outpath='./output_init.png'))
+                      outpath=outdir+'output_init.png'))
 
    q.join()
 
@@ -672,23 +682,23 @@ queue to drain before the script moves on.
    sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(obslist, h.gains_prior)
 
    ag_schedule = ut.Schedule(5e-5, 1e-3, h.niter)
-   ag_network = mo.AmplitudeGains(nsites=nsites, ntimes=ntimes, lower=lower, upper=upper)
+   ag_network = mo.AmplitudeGains(nsites=nsites, nframes=ntimes, lower=lower, upper=upper)
    ag_params = ag_network.init(
        rkey, jnp.ones((ntimes, nvis, 2), dtype=int), jnp.ones((ntimes), dtype=int)
    )
    ag_state = tr.Trainer.create(
        apply_fn=ag_network.apply,
-       params=ag_params['params'].unfreeze(),
+       params=ag_params['params'],
        tx=optax.adamax(learning_rate=ag_schedule.exponential)
    )
 
-   pg_network = mo.PhaseGains(nsites=nsites, ntimes=ntimes)
+   pg_network = mo.PhaseGains(nsites=nsites, nframes=ntimes)
    pg_params = pg_network.init(
        rkey, jnp.ones((ntimes, nvis, 2), dtype=int), jnp.ones((ntimes), dtype=int)
    )
    pg_state = tr.Trainer.create(
        apply_fn=pg_network.apply,
-       params=pg_params['params'].unfreeze(),
+       params=pg_params['params'],
        tx=optax.adamax(learning_rate=1)
    )
 
@@ -739,7 +749,7 @@ gains together when ``visI`` is.
 
        if i == 1 or i % 500 == 0 or i == h.niter:
            q.put(dict(video=video, out=out, loss=lloss,
-                      outpath='./output_train.png'))
+                      outpath=outdir+'output_train.png'))
 
    q.join()
 
@@ -864,13 +874,13 @@ regularizers of the branch in use.
 
    # Quick look at the last training output
    video.from_video(out, loss=lloss)
-   video.plot_gif(outpath='./output.gif')
+   video.plot_gif(outpath=outdir+'output.gif')
 
    # Re-sample the network on a finer grid
    grid_out = ut.get_grid(h.npix_out, h.npix_out, ntimes, times=times)
    video = fi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
    video.from_state(state, grid_out, npix_train=h.npix)
-   video.save_h5('./output.h5')
+   video.save_h5(outdir+'output.h5')
 
 Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of
 the trained network on a finer grid.
@@ -934,6 +944,10 @@ scenario. Each corresponds to a script in ``scripts/`` and a parameter file in
      - ``example_multiepoch_imaging.py``
      - time (days--years)
      - 1 (3D)
+   * - :ref:`multifreq-multiepoch-imaging`
+     - ``example_multifreq_multiepoch_imaging.py``
+     - time (days--years) and frequency
+     - 1 (4D, or 3D with a spectral model)
    * - :ref:`dynamic-imaging`
      - ``example_dynamic_imaging.py``
      - time (within a track)
@@ -983,7 +997,7 @@ Reconstruct a single image from a single observation.
      grid_out = ut.get_grid(h.npix_out, h.npix_out)
      image = fi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
      image.from_state(state, grid_out, npix_train=h.npix)
-     image.save_fits('./output_image.fits')
+     image.save_fits(outdir+'output_image.fits')
 
 .. _spectral-imaging:
 
@@ -997,10 +1011,21 @@ axis, so the reconstruction can be sampled at frequencies that were not
 observed.
 
 The output is a cube of images, one per observed frequency, and the network can
-be re-sampled at intermediate frequencies. There is no explicit spectral-index
-model: the spectral dependence is whatever the neural field interpolates between
-the observed bands. Explicit spectral modelling, and combining the spectral and
-multi-epoch axes, are planned developments.
+be re-sampled at intermediate frequencies. Two emission models are available,
+selected by ``spectral_model`` in the parameter file:
+
+- ``free`` (default) — a :class:`kine.model.NeuralField` taking the frequency as
+  the third input coordinate. There is no explicit spectral model: the spectral
+  dependence is whatever the neural field interpolates between the observed
+  bands.
+- ``powerlaw`` or ``curved`` — a :class:`kine.model.NeuralFieldSpectral` taking
+  the space coordinates (x, y) only, and predicting one image of the parameters
+  of a power law in :math:`\log(\nu/\nu_\mathrm{ref})`, with an additional
+  curvature term for ``curved``. The bands are coupled through this model, and
+  the spectral-index map :math:`\alpha` is a direct output.
+
+The combination of the spectral and multiepoch axes is described in
+:ref:`multifreq-multiepoch-imaging`.
 
 - *Block 3* — load one file per frequency into ``obslist`` and match the
   metadata with :meth:`~kine.obsdata.Obsdata.fix_multifreq`, which leaves each
@@ -1017,8 +1042,16 @@ multi-epoch axes, are planned developments.
 
   ``labels`` is passed to the ``Video`` constructor as ``dates=labels`` and is
   used to caption the frames; without it the frames are labelled by the raw
-  coordinate value.
-- *Block 6* — ``outdim = 1``: spectral imaging is applied to Stokes I only.
+  coordinate value. For the spectral model, the 2D grid
+  ``ut.get_grid(h.npix, h.npix)`` and the log-frequency offsets
+  ``lognu = ut.get_lognu(freqs, h.nu_ref_ghz * 1e9)`` are used instead, and the
+  script drops the frequency entry of ``nposenc``.
+- *Block 6* — ``outdim = 1``: spectral imaging is applied to Stokes I only. For
+  the spectral model, ``mo.NeuralFieldSpectral(..., outdim=2,
+  alpha_range=h.alpha_range)`` (``outdim=3`` for ``curved``).
+- *Block 9* — for the spectral model, ``lognu`` is added to the inputs of the
+  training step: the NUFFT loss then expands the image of spectral parameters
+  into one frame per band with :meth:`kine.model.NeuralFieldSpectral.expand`.
 
 .. _multiepoch-imaging:
 
@@ -1056,6 +1089,97 @@ spanning days to decades. Each epoch corresponds to one frame, but each frame is
   can be passed instead of paths. ``labels=True`` returns ``YYYY-MM-DD`` strings
   for plot captions. Pass ``dates=dates`` to the ``Video`` constructor.
 - *Block 5,9* — with a large number of epochs NUFFT is strongly recommended.
+
+.. _multifreq-multiepoch-imaging:
+
+Spectral multiepoch imaging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Reconstruct the source at several epochs and several frequencies at once, from
+observations where each epoch is observed in one or more frequency bands. Time
+and frequency are both coordinates of the neural field, so every frame is
+constrained by the data at all epochs and in all bands. Missing (epoch, band)
+combinations are allowed: they are interpolated by the network. Stokes I only,
+and not available with the static + dynamic decomposition.
+
+Two emission models are available, selected by ``spectral_model`` in the
+parameter file:
+
+- ``free`` (default) — a :class:`kine.model.NeuralField` taking the frequency as
+  a fourth input coordinate, ``(t, f, x, y)``. All bands share one network, but
+  their spectral dependence is not constrained by any model.
+- ``powerlaw`` or ``curved`` — a :class:`kine.model.NeuralFieldSpectral` taking
+  ``(t, x, y)`` and predicting at each point the parameters of a power law in
+  :math:`\log(\nu/\nu_\mathrm{ref})`, with an additional curvature term for
+  ``curved``. Coupling the bands through this model is better conditioned when
+  only a few bands are available, and gives the spectral-index maps
+  :math:`\alpha` as a direct output. The spectrum starts flat
+  (:math:`\alpha = 0`) after the initialization.
+
+**What changes**
+
+- *Block 1* — use ``fi.SpectralVideo.async_plot`` and the
+  :class:`kine.field.SpectralVideo` class for the results.
+- *Block 3* — load all files with a common prefix, match the metadata with
+  :meth:`~kine.obsdata.Obsdata.fix_multifreq` (which keeps each observation's
+  own ``rf``), then sort the observations onto a regular (epoch, band) table:
+
+  .. code-block:: python
+
+     epochs, freqs, table, mask = ut.group_multiepoch_multifreq(
+         obslist, ut.get_times_multiepoch(obslist), freq_tol=h.freq_tol
+     )
+     ref = next(o for o in table if o is not None)
+     filled = [o if o is not None else ref for o in table]
+     lcurve = jnp.array([o.get_zbl() for o in filled])
+
+  :func:`kine.utils.group_multiepoch_multifreq` clusters the observing
+  frequencies into bands within ``freq_tol``, and orders the frames
+  epoch-major: frame ``k`` is epoch ``k // nf`` and band ``k % nf``. Missing
+  cells are ``None`` in ``table`` and ``False`` in ``mask``. They are filled
+  with a placeholder observation, so that all arrays have the same shape, and
+  then excluded from the losses.
+- *Block 4* — for the free field, a 4D grid whose frequency axis is spaced
+  logarithmically:
+
+  .. code-block:: python
+
+     grid = ut.get_grid(h.npix, h.npix, nt, times=epochs, tdil=h.tdil,
+                        nf=nf, freqs=freqs, fdil=h.fdil)
+
+  ``nposenc`` therefore has four entries, ``[t, f, x, y]``. For the
+  spectral model, the 3D grid ``ut.get_grid(h.npix, h.npix, nt, times=epochs,
+  tdil=h.tdil)`` and the log-frequency offsets ``lognu =
+  ut.get_lognu(freqs, h.nu_ref_ghz * 1e9)`` are used instead, and the script
+  drops the frequency entry of ``nposenc``.
+- *Block 5* — the data products of missing frames are excluded by multiplying
+  the padding mask by the frame mask, ``padmask * mask[:, None]``.
+- *Block 6* — ``mo.NeuralField(..., outdim=1)`` for the free field, or
+  ``mo.NeuralFieldSpectral(..., outdim=2, alpha_range=h.alpha_range)`` for the
+  spectral model (``outdim=3`` for ``curved``).
+- *Block 9* — pass the frame mask, and ``lognu`` for spectral index modeling:
+
+  .. code-block:: python
+
+     inputs = odict(grid=grid, data=data, lcurve=lcurve, mask=mask,
+                    uvpoints=uv, pulsefac=pulse, uvind=uvind,
+                    triangles=tria, quadrangles=quad)
+     if spectral:
+         inputs['lognu'] = lognu
+     loss, ldict, out, state = tr.Trainer.train_step(
+         odict(state=state) | inputs
+     )
+
+  With ``lognu``, the NUFFT loss Taylor expands the video with respect to 
+  freqeuncy using the spectral index (and spectral curvature) maps to get one 
+  frame per (epoch, band) with :meth:`kine.model.NeuralFieldSpectral.expand` before
+  computing the data products, and ``mask`` excludes the missing frames from
+  the light-curve term.
+- *Block 10* — re-sample with :meth:`kine.field.SpectralVideo.from_state`,
+  passing ``lognu`` for the spectral index modeling.
+  :meth:`~kine.field.SpectralVideo.plot_gif` saves a GIF over the epochs with
+  one panel per band, and :meth:`~kine.field.SpectralVideo.save_h5` writes one
+  HDF5 movie per band.
 
 .. _dynamic-imaging:
 
@@ -1262,6 +1386,6 @@ complex visibilities.
      video.iarr = init_vid.iarr.copy()
      ...
      video.from_video(out, loss=lloss)
-     video.plot_gif(outpath='./out_pol.gif')
-     video.save_h5('./video_pol.h5')
+     video.plot_gif(outpath=outdir+'out_pol.gif')
+     video.save_h5(outdir+'video_pol.h5')
 

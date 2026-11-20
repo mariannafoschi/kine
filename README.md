@@ -12,6 +12,7 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI observation.
 - **Multi-epoch imaging**: reconstruct a video of the source across multiple observations spanning days to years.
 - **Spectral imaging**: reconstruct the spectral dependence of the source across multiple frequencies.
+- **Spectral multi-epoch imaging**: reconstruct the source at several epochs and several frequencies at once, optionally with an explicit power-law spectral model (Stokes I only).
 
 ### Available features
 
@@ -25,7 +26,6 @@ Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthed
 
 Coming Soon:
 
-- Multi-epoch + multi-frequency imaging
 - Scalability to large datasets
 
 ## Documentation

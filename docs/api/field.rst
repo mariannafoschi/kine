@@ -11,11 +11,16 @@ The :class:`~kine.field.Image` class is its time-independent counterpart,
 used for static imaging. It offers the same construction, plotting and
 export interface for a single frame.
 
+The :class:`~kine.field.SpectralVideo` class is the container for
+spectral multi-epoch reconstructions (Stokes I only). It provides plots of the 
+frames and of the spectral-index maps, and export of one HDF5 movie per band.
+
 .. autosummary::
    :nosignatures:
 
    ~kine.field.Video
    ~kine.field.Image
+   ~kine.field.SpectralVideo
 
 Video
 -----
@@ -99,4 +104,36 @@ Image
    ~kine.field.Image.save_fits
 
 .. autoclass:: kine.field.Image
+   :exclude-members: __init__
+
+SpectralVideo
+-------------
+
+**SpectralVideo object creation**
+
+.. autosummary::
+   :nosignatures:
+
+   ~kine.field.SpectralVideo.from_state
+   ~kine.field.SpectralVideo.from_video
+   ~kine.field.SpectralVideo.grid_iarr
+
+**Plotting**
+
+.. autosummary::
+   :nosignatures:
+
+   ~kine.field.SpectralVideo.plot
+   ~kine.field.SpectralVideo.plot_spectral_index
+   ~kine.field.SpectralVideo.plot_gif
+   ~kine.field.SpectralVideo.async_plot
+
+**Saving and exporting**
+
+.. autosummary::
+   :nosignatures:
+
+   ~kine.field.SpectralVideo.save_h5
+
+.. autoclass:: kine.field.SpectralVideo
    :exclude-members: __init__

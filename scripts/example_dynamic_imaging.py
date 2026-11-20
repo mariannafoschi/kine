@@ -31,6 +31,7 @@ References:
     Sagittarius A* video reconstruction with kine" In prep. (2026).
 """
 
+import os
 import queue
 import argparse
 import warnings
@@ -67,6 +68,7 @@ ut.init_worker(fi.Video.async_plot, q)
 par = argparse.ArgumentParser()
 par.add_argument('-obs', type=str, help='uvfits file name')
 par.add_argument('-yml', type=str, help='hyperparameter file name')
+par.add_argument('-out', type=str, required=True, help='output folder name')
 par = par.parse_args()
 
 # Load hyperparameters from YAML file
@@ -77,6 +79,10 @@ h = ut.HyperParams(h)
 # Set RNG keys
 rkey = jax.random.PRNGKey(h.seed)
 np.random.seed(h.seed)
+
+# Make output directory if it does not exist
+outdir = os.path.join(par.out, '')
+os.makedirs(outdir, exist_ok=True)
 
 # ______________________________________________________________________________
 # Load and pre-process data
@@ -189,18 +195,10 @@ s_network = mo.NeuralField(
     activ=nn.gelu,
     outactiv=nn.sigmoid,
     outshift=h.outshift,
-    scaling_i=h.scaling_i
+    scaling_i=h.scaling_i,
+    remat=h.remat
 )
-s_batch_stats = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]),
-    train=True
-)
-s_params = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]),
-    train=True
-)
+s_variables = s_network.init(rkey, jnp.ones([s_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 s_sched = optax.piecewise_constant_schedule(
@@ -209,8 +207,8 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'],
-    batch_stats=s_batch_stats['batch_stats'],
+    params=s_variables['params'],
+    batch_stats=s_variables['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
@@ -223,18 +221,10 @@ d_network = mo.NeuralField(
     activ=nn.gelu,
     outactiv=nn.sigmoid,
     outshift=h.outshift,
-    scaling_i=h.scaling_i
+    scaling_i=h.scaling_i,
+    remat=h.remat
 )
-d_batch_stats = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]),
-    train=True
-)
-d_params = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]),
-    train=True
-)
+d_variables = d_network.init(rkey, jnp.ones([d_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 d_sched = optax.piecewise_constant_schedule(
@@ -243,8 +233,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'],
-    batch_stats=d_batch_stats['batch_stats'],
+    params=d_variables['params'],
+    batch_stats=d_variables['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -264,12 +254,12 @@ init_img = fi.Video(
     h.initniter_0
 )
 init_img.add_tophat(jnp.ones([1]), h.init_params)
-init_img.plot()
+init_img.plot(outpath=outdir+'tmp.png')
 
 # Dynamic initialization
 init_vid = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
-init_vid.plot()
+init_vid.plot(outpath=outdir+'tmp.png')
 
 # ..............................
 # Static initialization training
@@ -314,7 +304,7 @@ for i in (pbar := tqdm(range(1, h.initniter_0+1))):
                 video=s_init,
                 out=out,
                 loss=lloss,
-                outpath='./s_init_0.png'
+                outpath=outdir+'s_init_0.png'
             )
         )
 
@@ -357,7 +347,7 @@ for i in (pbar := tqdm(range(1, h.initniter_0+1))):
                 video=d_init,
                 out=out,
                 loss=lloss,
-                outpath='./d_init_0.png'
+                outpath=outdir+'d_init_0.png'
             )
         )
 
@@ -385,7 +375,7 @@ ag_schedule = ut.Schedule(1e-12, 1e-12, h.niter_0)
 # Amplitude gains network
 ag_network = mo.AmplitudeGains(
     nsites=nsites,
-    ntimes=ntimes,
+    nframes=ntimes,
     lower=lower,
     upper=upper
 )
@@ -401,7 +391,7 @@ ag_state = tr.Trainer.create(
 )
 
 # Phase gains network
-pg_network = mo.PhaseGains(nsites=nsites, ntimes=ntimes)
+pg_network = mo.PhaseGains(nsites=nsites, nframes=ntimes)
 pg_params = pg_network.init(
     rkey,
     jnp.ones((ntimes, nvis, 2), dtype=int),
@@ -460,7 +450,7 @@ for i in (pbar := tqdm(range(1, h.niter_0+1))):
                 s_out=s_out * fluxnorm,
                 d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
-                outpath='./out_0.png'
+                outpath=outdir+'out_0.png'
             )
         )
 
@@ -526,14 +516,7 @@ for dtype in h.data_prod:
 # Initialize networks
 
 # Static Neural Field
-s_batch_stats = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]), train=True
-)
-s_params = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]), train=True
-)
+s_variables = s_network.init(rkey, jnp.ones([s_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 s_sched = optax.piecewise_constant_schedule(
@@ -542,20 +525,13 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'],
-    batch_stats=s_batch_stats['batch_stats'],
+    params=s_variables['params'],
+    batch_stats=s_variables['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
 # Dynamic Neural Field
-d_batch_stats = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]), train=True
-)
-d_params = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]), train=True
-)
+d_variables = d_network.init(rkey, jnp.ones([d_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 d_sched = optax.piecewise_constant_schedule(
@@ -564,8 +540,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'],
-    batch_stats=d_batch_stats['batch_stats'],
+    params=d_variables['params'],
+    batch_stats=d_variables['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -582,12 +558,12 @@ init_img = fi.Video(
     h.initniter_1
 )
 init_img.add_tophat(jnp.ones([1]), h.init_params)
-init_img.plot()
+init_img.plot(outpath=outdir+'tmp.png')
 
 # Dynamic initialization
 init_vid = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
-init_vid.plot()
+init_vid.plot(outpath=outdir+'tmp.png')
 
 # ..............................
 # Static initialization training
@@ -632,7 +608,7 @@ for i in (pbar := tqdm(range(1, h.initniter_1+1))):
                 video=s_init,
                 out=out,
                 loss=lloss,
-                outpath='./s_init_1.png'
+                outpath=outdir+'s_init_1.png'
             )
         )
 
@@ -675,7 +651,7 @@ for i in (pbar := tqdm(range(1, h.initniter_1+1))):
                 video=d_init,
                 out=out,
                 loss=lloss,
-                outpath='./d_init_1.png'
+                outpath=outdir+'d_init_1.png'
             )
         )
 
@@ -697,7 +673,7 @@ ag_schedule = ut.Schedule(5e-5, 1e-3, h.niter_1)
 # Amplitude gains network
 ag_network = mo.AmplitudeGains(
     nsites=nsites,
-    ntimes=ntimes,
+    nframes=ntimes,
     lower=lower,
     upper=upper
 )
@@ -713,7 +689,7 @@ ag_state = tr.Trainer.create(
 )
 
 # Phase gains network
-pg_network = mo.PhaseGains(nsites=nsites, ntimes=ntimes)
+pg_network = mo.PhaseGains(nsites=nsites, nframes=ntimes)
 pg_params = pg_network.init(
     rkey,
     jnp.ones((ntimes, nvis, 2), dtype=int),
@@ -779,7 +755,7 @@ for i in (pbar := tqdm(range(1, h.niter_1+1))):
                 s_out=s_out * fluxnorm,
                 d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
-                outpath='./out_1.png'
+                outpath=outdir+'out_1.png'
             )
         )
 
@@ -797,7 +773,7 @@ video.from_video(out * fluxnorm, loss=lloss)
 video.plot_gif(
     s_out=s_out * fluxnorm,
     d_out=d_out * fluxnorm,
-    outpath='./out_1.gif'
+    outpath=outdir+'out_1.gif'
 )
 
 # .......................................
@@ -824,8 +800,8 @@ video.from_states(
     amp_gains=amp_gains,
     npix_train=h.npix_1
 )
-video.save_h5('./video_1.h5')
-video.save_gains('./gains_1.txt')
+video.save_h5(outdir+'video_1.h5')
+video.save_gains(outdir+'gains_1.txt')
 
 # ______________________________________________________________________________
 # STEP 2: Rerun using as network initilization the previous video
@@ -882,14 +858,7 @@ for dtype in h.data_prod:
 # Initialize networks
 
 # Static Neural Field
-s_batch_stats = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]), train=True
-)
-s_params = s_network.init(
-    rkey,
-    jnp.ones([s_grid.shape[-1]]), train=True
-)
+s_variables = s_network.init(rkey, jnp.ones([s_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 s_sched = optax.piecewise_constant_schedule(
@@ -898,8 +867,8 @@ s_sched = optax.piecewise_constant_schedule(
 )
 s_state = tr.Trainer.create(
     apply_fn=s_network.apply,
-    params=s_params['params'],
-    batch_stats=s_batch_stats['batch_stats'],
+    params=s_variables['params'],
+    batch_stats=s_variables['batch_stats'],
     tx=optax.adamax(s_sched)
 )
 
@@ -908,14 +877,7 @@ sharpgelu = partial(mo.sharpgelu, s=3)
 d_network.activ = sharpgelu
 
 # Dynamic Neural Field
-d_batch_stats = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]), train=True
-)
-d_params = d_network.init(
-    rkey,
-    jnp.ones([d_grid.shape[-1]]), train=True
-)
+d_variables = d_network.init(rkey, jnp.ones([d_grid.shape[-1]]), train=True)
 
 # Schedule and train state
 d_sched = optax.piecewise_constant_schedule(
@@ -924,8 +886,8 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params'],
-    batch_stats=d_batch_stats['batch_stats'],
+    params=d_variables['params'],
+    batch_stats=d_variables['batch_stats'],
     tx=optax.adamax(d_sched)
 )
 
@@ -941,13 +903,13 @@ init_img = fi.Video(
     obs.dec,
     h.initniter_2
 )
-init_img.from_h5('./video_1.h5', blur=0, fn=np.median)
-init_img.plot()
+init_img.from_h5(outdir+'video_1.h5', blur=0, fn=np.median)
+init_img.plot(outpath=outdir+'tmp.png')
 
 # Dynamic initialization
 init_vid = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
-init_vid.from_h5('./video_1.h5', blur=30, fn=np.median)
-init_vid.plot()
+init_vid.from_h5(outdir+'video_1.h5', blur=30, fn=np.median)
+init_vid.plot(outpath=outdir+'tmp.png')
 
 # ..............................
 # Static initialization training
@@ -992,7 +954,7 @@ for i in (pbar := tqdm(range(1, h.initniter_2+1))):
                 video=s_init,
                 out=out,
                 loss=lloss,
-                outpath='./s_init_2.png'
+                outpath=outdir+'s_init_2.png'
             )
         )
 
@@ -1035,7 +997,7 @@ for i in (pbar := tqdm(range(1, h.initniter_2+1))):
                 video=d_init,
                 out=out,
                 loss=lloss,
-                outpath='./d_init_2.png'
+                outpath=outdir+'d_init_2.png'
             )
         )
 
@@ -1055,7 +1017,7 @@ sites, nsites, nvis, bl_indx, lower, upper = obs.set_gains_vars(
 ag_schedule = ut.Schedule(5e-5, 1e-3, h.niter_2)
 
 # Amplitude gains network
-ag_network = mo.AmplitudeGains(nsites=nsites, ntimes=ntimes, lower=lower, upper=upper)
+ag_network = mo.AmplitudeGains(nsites=nsites, nframes=ntimes, lower=lower, upper=upper)
 ag_params = ag_network.init(
     rkey,
     jnp.ones((ntimes, nvis, 2), dtype=int),
@@ -1068,7 +1030,7 @@ ag_state = tr.Trainer.create(
 )
 
 # Phase gains network
-pg_network = mo.PhaseGains(nsites=nsites, ntimes=ntimes)
+pg_network = mo.PhaseGains(nsites=nsites, nframes=ntimes)
 pg_params = pg_network.init(
     rkey,
     jnp.ones((ntimes, nvis, 2), dtype=int),
@@ -1135,7 +1097,7 @@ for i in (pbar := tqdm(range(1, h.niter_2+1))):
                 s_out=s_out * fluxnorm,
                 d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
-                outpath='./out_2.png'
+                outpath=outdir+'out_2.png'
             )
         )
 
@@ -1153,7 +1115,7 @@ video.from_video(out * fluxnorm, loss=lloss)
 video.plot_gif(
     s_out=s_out * fluxnorm,
     d_out=d_out * fluxnorm,
-    outpath='./out_2.gif'
+    outpath=outdir+'out_2.gif'
 )
 
 # .......................................
@@ -1180,5 +1142,5 @@ video.from_states(
     amp_gains=amp_gains,
     npix_train=h.npix_2
 )
-video.save_h5('./video_2.h5')
-video.save_gains('./gains_2.txt')
+video.save_h5(outdir+'video_2.h5')
+video.save_gains(outdir+'gains_2.txt')

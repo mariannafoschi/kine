@@ -30,6 +30,7 @@ link at the bottom of this page for those.
    ~kine.obsdata.Obsdata.fix_multiepoch
    ~kine.obsdata.Obsdata.fix_multifreq
    ~kine.obsdata.Obsdata.split_obs
+   ~kine.obsdata.Obsdata.tlist
 
 **Pre-processing**
 

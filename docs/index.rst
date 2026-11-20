@@ -29,8 +29,11 @@ Imaging modes
   across multiple frequencies.
 - **Dynamic imaging**: reconstruct a video of the source from a single VLBI 
   observation.
-- **Multi-epoch imaging**: reconstruct a video of the source's evolution across 
+- **Multi-epoch imaging**: reconstruct a video of the source's evolution across
   multiple observations spanning days to years.
+- **Spectral multi-epoch imaging**: reconstruct the source at several
+  epochs and several frequencies at once, optionally with an explicit power-law
+  spectral model (Stokes I only).
 
 Available Features
 ------------------
@@ -48,8 +51,6 @@ Available Features
 
 **Coming soon:**
 
-- Multi-epoch + spectral imaging
-- Explicit modeling of the spectral dependence
 - Scalability to large datasets
 
 References

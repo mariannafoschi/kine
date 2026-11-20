@@ -13,13 +13,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Multi-epoch dynamic imaging with `kine`.
+"""Spectral imaging with `kine`.
 
 This file is a comprehensive example on how `kine` can be used to
-reconstruct a Stokes I video from multiple observations of VLBI arrays.
+reconstruct the Stokes I emission of a source at several frequencies, from
+simultaneous VLBI observations in different frequency bands.
 
-This has been tested for hundreds of different epochs spanning decades
-of source monitoring with programs like MOJAVE, BEAM-ME, or ngEHT (simulated).
+Two emission models are available, selected by ``spectral_model`` in the
+parameter file:
+
+- ``free`` (default): a neural field taking the frequency as a third input
+  coordinate (f, x, y), with no explicit spectral model.
+- ``powerlaw`` / ``curved``: a neural field taking the space coordinates (x, y) 
+  and predicting per-pixel spectral parameters (I0, alpha[, beta]); the emission 
+  at each frequency follows a power law (with optional curvature). This also 
+  yields the spectral-index map alpha as a direct output.
 
 References:
     [1] Foschi, M., Zhao, B., Fuentes, A. et al., "Video reconstruction of
@@ -65,6 +73,7 @@ ut.init_worker(fi.Video.async_plot, q)
 par = argparse.ArgumentParser()
 par.add_argument('-obs', type=str, help='uvfits file name')
 par.add_argument('-yml', type=str, help='hyperparameter file name')
+par.add_argument('-out', type=str, required=True, help='output folder name')
 par = par.parse_args()
 
 # Load hyperparameters from YAML file
@@ -77,9 +86,11 @@ rkey = jax.random.PRNGKey(h.seed)
 np.random.seed(h.seed)
 
 # Make output directory if it does not exist
-outname = 'm87_multifreq/'
-outdir = '../output/'+outname
+outdir = os.path.join(par.out, '')
 os.makedirs(outdir, exist_ok=True)
+
+# Emission model
+spectral = h.spectral_model in ('powerlaw', 'curved')
 
 # ______________________________________________________________________________
 # Load and pre-process data
@@ -119,8 +130,13 @@ labels = ['B1 (214 GHz)', 'B2 (216 GHz)', 'B3 (226 GHz)', 'B4 (228 GHz)']
 nfreqs = len(freqs)
 print("Frequencies: ", freqs/1e9, 'GHz')
 
-# Set 3D coordinate grids
-grid = ut.get_grid(h.npix, h.npix, nfreqs, times=freqs)
+# Set coordinate grids: 3D (f, x, y) for the free field, 2D (x, y) for the
+# spectral model, where the frequency enters through lognu
+if spectral:
+    grid = ut.get_grid(h.npix, h.npix)
+    lognu = ut.get_lognu(freqs, h.nu_ref_ghz * 1e9)
+else:
+    grid = ut.get_grid(h.npix, h.npix, nfreqs, times=freqs)
 
 # Set polarization channels (total intensity only)
 outdim = 1
@@ -178,19 +194,34 @@ quad = ut.pad(quad).astype('int32')
 # ..................
 # Initialize network
 
-# Neural Field
-network = mo.NeuralField(
-    posenc_deg=tuple(h.nposenc),
-    outdim=outdim,
-    depth=h.depth,
-    width=h.width,
-    activ=nn.gelu,
-    outactiv=nn.softplus,
-    outshift=h.outshift,
-    scaling_i=h.scaling_i
-)
-batch_stats = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
-params = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
+if spectral:
+    # Spectral model: positional encoding of (x, y), i.e. no frequency
+    network = mo.NeuralFieldSpectral(
+        posenc_deg=tuple(h.nposenc[1:]),
+        outdim=3 if h.spectral_model == 'curved' else 2,
+        depth=h.depth,
+        width=h.width,
+        activ=nn.gelu,
+        outactiv=nn.softplus,
+        outshift=h.outshift,
+        scaling_i=h.scaling_i,
+        alpha_range=h.alpha_range,
+        remat=h.remat
+    )
+else:
+    # Free field: positional encoding of (f, x, y)
+    network = mo.NeuralField(
+        posenc_deg=tuple(h.nposenc),
+        outdim=outdim,
+        depth=h.depth,
+        width=h.width,
+        activ=nn.gelu,
+        outactiv=nn.softplus,
+        outshift=h.outshift,
+        scaling_i=h.scaling_i,
+        remat=h.remat
+    )
+variables = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
 
 # Schedule and train state
 sched = optax.piecewise_constant_schedule(
@@ -199,8 +230,8 @@ sched = optax.piecewise_constant_schedule(
 )
 state = tr.Trainer.create(
     apply_fn=network.apply,
-    params=params['params'],
-    batch_stats=batch_stats['batch_stats'],
+    params=variables['params'],
+    batch_stats=variables['batch_stats'],
     tx=optax.adamax(sched)
 )
 
@@ -212,16 +243,25 @@ print("-------\nInitializing network...\n")
 # .....................
 # Create initialization
 
+# Free field: one tophat per band. Spectral model: one tophat for I0 at the
+# reference frequency and a flat spectrum.
+if spectral:
+    init_freqs = jnp.array([h.nu_ref_ghz * 1e9])
+    init_labels = [f'I0 ({h.nu_ref_ghz} GHz)']
+    init_lcurve = jnp.array([lcurve.mean()])
+else:
+    init_freqs, init_labels, init_lcurve = freqs, labels, lcurve
+
 init_vid = fi.Video(
-    freqs,
+    init_freqs,
     h.npix,
     fov,
     obs.ra,
     obs.dec,
     h.initniter,
-    dates=labels
+    dates=init_labels
 )
-init_vid.add_tophat(lcurve, h.init_params)
+init_vid.add_tophat(init_lcurve, h.init_params)
 init_vid.plot(outpath=outdir+'init_image.png')
 
 # .......................
@@ -229,13 +269,13 @@ init_vid.plot(outpath=outdir+'init_image.png')
 
 # Initialize video and loss
 init = fi.Video(
-    freqs,
+    init_freqs,
     h.npix,
     fov,
     obs.ra,
     obs.dec,
     h.initniter,
-    dates=labels
+    dates=init_labels
 )
 lloss, loss = [], 0
 
@@ -260,7 +300,7 @@ for i in (pbar := tqdm(range(1, h.initniter+1))):
         q.put(
             dict(
                 video=init,
-                out=out,
+                out=out[..., :1],
                 loss=lloss,
                 outpath=outdir+'output_init.png'
             )
@@ -284,23 +324,27 @@ tr.NPIX = h.npix
 video = fi.Video(freqs, h.npix, fov, obs.ra, obs.dec, h.niter, dates=labels)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
+# Training inputs
+inputs = odict(
+    grid=grid,
+    data=data,
+    lcurve=lcurve,
+    uvpoints=uv,
+    pulsefac=pulse,
+    uvind=uvind,
+    triangles=tria,
+    quadrangles=quad
+)
+if spectral:
+    inputs['lognu'] = lognu
+
 # Looping over epochs
 for i in (pbar := tqdm(range(1, h.niter+1))):
     pbar.set_description(f'Loss {loss:.1e}')
 
     # Apply one training step
     loss, ldict, out, state = tr.Trainer.train_step(
-        odict(
-            state=state,
-            grid=grid,
-            data=data,
-            lcurve=lcurve,
-            uvpoints=uv,
-            pulsefac=pulse,
-            uvind=uvind,
-            triangles=tria,
-            quadrangles=quad
-        )
+        odict(state=state) | inputs
     )
 
     # Save loss
@@ -330,13 +374,23 @@ video.from_video(out, loss=lloss)
 video.plot_gif(outpath=outdir+'output_multifreq.gif')
 video.save_h5(outdir+'output_multifreq.h5')
 
-# Re-set grid up for output video
-grid = ut.get_grid(h.npix_out, h.npix_out, nfreqs, times=freqs)
-
-# Generate output video
+# Generate output video on a finer grid
 print("-------\nSampling network on a finer grid and saving results...\n")
 video = fi.Video(freqs, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=labels)
-video.from_state(state, grid, npix_train=h.npix)
+if spectral:
+    # Spectral model: frames and spectral-index map from the 2D (x, y) grid
+    grid = ut.get_grid(h.npix_out, h.npix_out)
+    spec = fi.SpectralVideo(
+        ut.get_times_multiepoch(obslist[:1]), freqs, h.npix_out, fov,
+        obs.ra, obs.dec, h.niter,
+        dates=ut.get_times_multiepoch(obslist[:1], labels=True)
+    )
+    spec.from_state(state, grid, lognu=lognu, npix_train=h.npix)
+    spec.plot_spectral_index(outpath=outdir+'output_alpha.png')
+    video.iarr = spec.iarr
+else:
+    grid = ut.get_grid(h.npix_out, h.npix_out, nfreqs, times=freqs)
+    video.from_state(state, grid, npix_train=h.npix)
 video.save_h5(outdir+'output_multifreq2.h5')
 video.plot_gif(outpath=outdir+'output_multifreq2.gif')
 video.plot(outpath=outdir+'output_train2.png')

@@ -73,18 +73,53 @@ class Schedule:
         log_lr = log_i + frac * (log_f - log_i)
         return jnp.exp(log_lr)
 
+def _axis_coords(
+        n: int,
+        vals: ArrayLike | None = None,
+        dil: float = 10
+) -> Array:
+    """Normalize one coordinate axis to [0, 1] and apply a dilation factor.
+
+    Args:
+        n: Number of locations along the axis.
+        vals: Array of (irregular) locations. If None, `n` evenly
+            spaced locations are used.
+        dil: Dilation factor.
+
+    Returns:
+        Normalized coordinates along the axis.
+    """
+    if vals is None:
+        return jnp.linspace(0, 1, n) / dil
+    vals = jnp.asarray(vals, dtype=float)
+    span = vals[-1] - vals[0]
+    # Single-valued axis: collapse to zero instead of dividing by zero
+    span = jnp.where(span == 0, 1.0, span)
+    return (vals - vals[0]) / span / dil
+
 def get_grid(
         nx: int,
         ny: int,
         nt: int | None = None,
         times: ArrayLike | None = None,
-        tdil: float = 10
+        tdil: float = 10,
+        nf: int | None = None,
+        freqs: ArrayLike | None = None,
+        fdil: float = 10,
+        logfreq: bool = True
 ) -> Array:
-    """Generate grid of space-time coordinates.
+    """Generate grid of space-time-frequency coordinates.
 
     Spatial coordinates are the pixel centres ``(k + 0.5) / n`` of a unit
     field of view, matching the cell-centred pixel convention of the
     Fourier operators (ehtim's DFT and the NUFFT with its half-pixel phase).
+
+    If both `nt` and `nf` are given, a 4D grid of space-time-frequency
+    coordinates (t, f, x, y) is built for multi-frequency multi-epoch
+    imaging. Frames are flattened along a single leading axis in
+    epoch-major order, i.e. frame ``k`` corresponds to epoch ``k // nf``
+    and frequency ``k % nf``. This keeps the frame axis interchangeable
+    with the one used by all other imaging modes.
 
     Args:
         nx: Number of spatial locations in Right Ascension.
@@ -92,18 +127,38 @@ def get_grid(
         nt: Number of time locations.
         times: Array of (irregular) time locations.
         tdil: Time dilation factor.
+        nf: Number of frequency locations.
+        freqs: Array of (irregular) frequency locations, in Hz.
+        fdil: Frequency dilation factor.
+        logfreq: If true, space the frequency coordinate logarithmically.
+            Recommended, since synchrotron spectra are power laws and
+            therefore linear in log-frequency.
 
     Returns:
-        Grid of space-time coordinates.
+        Grid of space-time(-frequency) coordinates.
     """
-    # 3D grid (t,x,y)
-    if nt is not None:
+    # 4D grid (t,f,x,y)
+    if nt is not None and nf is not None:
         xx = (jnp.arange(nx) + 0.5) / nx
         yy = (jnp.arange(ny) + 0.5) / ny
-        tt = jnp.linspace(0, 1, nt) / tdil
         if times is not None:
-            tt = (times - times[0]) / (times[-1] - times[0]) / tdil
             nt = len(times)
+        if freqs is not None:
+            nf = len(freqs)
+            freqs = jnp.asarray(freqs, dtype=float)
+            freqs = jnp.log(freqs) if logfreq else freqs
+        tt = _axis_coords(nt, times, tdil)
+        ff = _axis_coords(nf, freqs, fdil)
+        mesh = jnp.meshgrid(tt, ff, xx, yy, indexing='ij')
+        grid = jnp.stack(mesh, axis=-1)
+        grid = grid.reshape(nt*nf, -1, 4)
+    # 3D grid (t,x,y)
+    elif nt is not None:
+        xx = (jnp.arange(nx) + 0.5) / nx
+        yy = (jnp.arange(ny) + 0.5) / ny
+        if times is not None:
+            nt = len(times)
+        tt = _axis_coords(nt, times, tdil)
         mesh = jnp.meshgrid(tt, xx, yy, indexing='ij')
         grid = jnp.stack(mesh, axis=-1)
         grid = grid.reshape(nt, -1, 3)
@@ -115,6 +170,24 @@ def get_grid(
         grid = np.stack(mesh, axis=-1)
         grid = grid.reshape(-1, 2)
     return grid
+
+def get_lognu(freqs: ArrayLike, nu_ref: float) -> Array:
+    """Get log-frequency offsets used by the spectral emission model.
+
+    The spectral model parametrizes the emission as a power law (with an 
+    optional curvature term) in :math:`\\log(\\nu/\\nu_\\mathrm{ref})`, so the 
+    raw (undilated, unnormalized) log-frequency offsets are needed alongside the 
+    network input coordinates returned by :func:`get_grid`.
+
+    Args:
+        freqs: Array of frequency locations, in Hz.
+        nu_ref: Reference frequency in Hz.
+
+    Returns:
+        Array of log-frequency offsets.
+    """
+    freqs = jnp.asarray(freqs, dtype=float)
+    return jnp.log(freqs / nu_ref)
 
 def regrid_image(im: eh.image.Image, fov: float, npix: int) -> eh.image.Image:
     """Resample an ehtim Image onto a square grid, conserving flux density.
@@ -207,6 +280,68 @@ def get_times_multiepoch(
     if integer:
         return jnp.array([int(mjd) for mjd in mjds])
     return jnp.array(mjds)
+
+def group_multiepoch_multifreq(
+        obslist: list,
+        times: ArrayLike,
+        freq_tol: float = 1e9
+) -> tuple[Array, Array, list, Array]:
+    """Group multi-epoch multi-frequency observations onto a frame grid.
+
+    Sorts a flat list of observations into a regular (epoch, frequency) grid.
+    The observing frequencies (``rf``) are clustered into bands: two
+    observations belong to the same band if their frequencies differ by less
+    than `freq_tol`, since real data may not have identical frequencies across 
+    epochs.
+
+    Frames are ordered epoch-major, so that frame ``k`` corresponds to epoch
+    ``k // nf`` and band ``k % nf``. Missing (epoch, band) combinations are 
+    allowed: they hold None in the table and are flagged in the mask, so that 
+    they can be excluded from the losses and the network interpolates them.
+
+    Args:
+        obslist: Flat list of ``Obsdata`` objects.
+        times: Epoch of each observation.
+        freq_tol: Frequency clustering tolerance in Hz.
+
+    Returns:
+        Unique epochs (length ``nt``), band centre frequencies in Hz (length
+        ``nf``), epoch-major list of observations of length ``nt*nf`` (None
+        for missing frames), and boolean mask of the same length flagging the
+        observed frames.
+    """
+    times = np.asarray(times)
+    epochs = np.unique(times)
+    # Cluster frequencies into bands within freq_tol
+    rfs = np.array([float(ob.rf) for ob in obslist])
+    bands = []
+    for rf in np.sort(rfs):
+        if not bands or rf - bands[-1][-1] > freq_tol:
+            bands.append([rf])
+        else:
+            bands[-1].append(rf)
+    freqs = np.array([np.mean(b) for b in bands])
+    nf = len(freqs)
+    # Assign each observation to its (epoch, band) cell
+    table = [None] * (len(epochs) * nf)
+    for ob, t in zip(obslist, times):
+        e = int(np.argmin(np.abs(epochs - t)))
+        b = int(np.argmin(np.abs(freqs - float(ob.rf))))
+        if table[e*nf + b] is not None:
+            print(
+                f'Warning: multiple observations map to epoch {epochs[e]}, '
+                f'band {freqs[b]/1e9:.1f} GHz; keeping the first.'
+            )
+            continue
+        table[e*nf + b] = ob
+    mask = np.array([ob is not None for ob in table])
+    print(
+        f'Grouped {int(mask.sum())} observations into {len(epochs)} epochs '
+        f'x {nf} bands ({int((~mask).sum())} missing frames).'
+    )
+    bands = [f'{f/1e9:.0f}' for f in freqs]
+    print(f'Bands: {" GHz, ".join(bands)} GHz')
+    return jnp.array(epochs), jnp.array(freqs), bands, table, jnp.array(mask)
 
 def get_static_flux(
         found_flux: float,

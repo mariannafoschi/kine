@@ -29,6 +29,7 @@ except ImportError:
     print('Warning: NUFFT not installed \n')
 
 from . import utils as ut
+from . import model as mo
 
 
 NPIX: int = 0
@@ -304,10 +305,18 @@ class Trainer(train_state.TrainState):
         :math:`\\chi^2` per requested data product plus the light-curve
         regularizer. Requires :data:`NPIX` to be set.
 
+        For spectral or spectral-multiepoch imaging with spectral index
+        modeling, pass ``lognu``: the network output is then taken as the
+        spectral parameters at each epoch and expanded into one frame per 
+        (epoch, freq).
+        Frames without data can be excluded from the light-curve loss with 
+        ``mask`` (their data products are excluded through ``padmask``).
+
         Args:
             *args: ``(params, batch_stats, apply_fn)`` of the network.
             **kwargs: ``data``, ``grid``, ``lcurve``, ``uvpoints``,
-                ``pulsefac``, ``uvind``, ``triangles`` and ``quadrangles``.
+                ``pulsefac``, ``uvind``, ``triangles`` and ``quadrangles``,
+                optionally ``lognu`` and ``mask``.
 
         Returns:
             The total loss and an auxiliary tuple ``(updates, ldict,
@@ -322,6 +331,8 @@ class Trainer(train_state.TrainState):
         data = kwargs.get('data')
         grid = kwargs.get('grid')
         lcurve = kwargs.get('lcurve')
+        mask = kwargs.get('mask')
+        lognu = kwargs.get('lognu')
         uvpoints = kwargs.get('uvpoints')
         pulses = kwargs.get('pulsefac')
         uvind = kwargs.get('uvind')
@@ -332,6 +343,9 @@ class Trainer(train_state.TrainState):
             {'params': params, 'batch_stats': batch_stats},
             grid, train=True, mutable=['batch_stats']
             )
+        # Spectral emission model: one frame per (epoch, frequency)
+        if lognu is not None:
+            video = mo.NeuralFieldSpectral.expand(video, lognu)
         # Separate polarimetric channels
         videopol = {'I': ut.to_complex(video[...,0])}
         # Initialize loss dictionary
@@ -352,7 +366,8 @@ class Trainer(train_state.TrainState):
         # Regularizer loss functions
         chi2 = Trainer._loss_lcurve(
             lcurve,
-            videopol['I']
+            videopol['I'],
+            mask=mask
             )
         ldict['lcurve'] = chi2
         # Total loss
@@ -839,7 +854,7 @@ class Trainer(train_state.TrainState):
                     return Trainer._loss_vis_3d_nfft(vis[batch, uvind], data)
                 if dtype == 'amp':
                     amp  = jnp.abs(vis[batch, uvind])
-                    return Trainer._loss_amp_3d_nfft(amp[batch, uvind], data)
+                    return Trainer._loss_amp_3d_nfft(amp, data)
                 if dtype == 'logamp':
                     eps = 1e-12
                     logamp = jnp.abs(vis[batch, uvind])
@@ -1379,12 +1394,15 @@ class Trainer(train_state.TrainState):
 # Regularizer loss functions ---------------------------------------------------
 
     @staticmethod
-    def _loss_lcurve(lcurve, frames):
+    def _loss_lcurve(lcurve, frames, mask=None):
         """Light-curve regularizer for a single image or a stack of frames.
 
         Args:
             lcurve: Target total flux density per frame.
             frames: Image or video array whose frames are summed.
+            mask: Optional per-frame mask. Masked-out frames (e.g. missing
+                (epoch, frequency) combinations in multi-frequency
+                multi-epoch imaging) are excluded from the loss.
 
         Returns:
             Summed squared departure of the reconstructed flux from
@@ -1392,7 +1410,10 @@ class Trainer(train_state.TrainState):
         """
         lcurve = jnp.atleast_1d(lcurve)
         flux = jnp.sum(jnp.real(frames).reshape(lcurve.shape[0], -1), axis=1)
-        return jnp.sum((flux - lcurve)**2)
+        res = (flux - lcurve)**2
+        if mask is not None:
+            res = res * mask
+        return jnp.sum(res)
 
     @staticmethod
     def _loss_min_dynamics(dynamic):

@@ -7,7 +7,7 @@ passed on the command line with ``-yml``:
 
 .. code-block:: bash
 
-   python example_static_imaging.py -obs observations.uvfits -yml params.yml
+   python example_static_imaging.py -obs observations.uvfits -yml params.yml -out /path/to/output
 
 The file is loaded with ``yaml.safe_load`` and wrapped in
 :class:`kine.utils.HyperParams`, which exposes every top-level key as an
@@ -65,8 +65,15 @@ See also :doc:`user_guide` block 3.
      - Minimum number of **stations** required in a time snapshot, passed to
        :meth:`~kine.obsdata.Obsdata.split_obs` and
        :meth:`~kine.obsdata.Obsdata.get_lightcurve`. Snapshots with fewer are 
-       dropped. Set to ``3`` when imaging with closure phases and ``4`` when 
+       dropped. Set to ``3`` when imaging with closure phases and ``4`` when
        imaging with closure amplitudes; ``0`` disables the cut.
+   * - ``freq_tol``
+     - float
+     - ``1.0e+9``
+     - Frequency tolerance (Hz) for grouping observations into bands. 
+       Observations whose frequencies differ by less than ``freq_tol`` belong to 
+       the same band. Write the exponent with its sign: YAML reads ``1.0e9`` as 
+       a string.
 
 **Time flagging example:**
 
@@ -121,12 +128,21 @@ See also :doc:`user_guide` block 4.
      - ``200``
      - Resolution the trained network is re-sampled at when the final image,
        video or cube is written (:doc:`user_guide` block 10).
+   * - ``tdil``, ``fdil``
+     - float
+     - ``10``
+     - Dilation factors of the time and frequency coordinates in
+       multi-frequency multi-epoch imaging, passed to
+       :func:`~kine.utils.get_grid`. Each axis is normalized to ``[0, 1]`` and
+       divided by its factor, so a larger value gives a smoother
+       reconstruction along that axis.
 
 Memory scales steeply with ``npix``: the DFT stores a dense
 ``(nvis × npix²)`` complex matrix per snapshot and per Fourier operator.
 Increase ``npix_out`` rather than ``npix`` when a finer output grid is all
 that is needed, and switch to the NUFFT when the DFT no longer fits in
-memory.
+memory. The network also stores the hidden-layer activations of every pixel of
+every frame for the backward pass, set ``remat: true`` to roughly halve it.
 
 
 Data Products
@@ -352,11 +368,17 @@ See also :doc:`user_guide` blocks 6, 7 and 9.
    * - Spectral imaging
      - 3
      - ``[f, x, y]``
+   * - Multi-frequency multi-epoch imaging
+     - 4
+     - ``[t, f, x, y]``
 
-Typical values are ``0``--``6`` for the time coordinate and ``0``--``4`` for the 
-spatial coordinates. In ``example_dynamic_imaging.py`` the same list serves both 
-networks: the 3D dynamic network receives ``tuple(h.nposenc)`` and the 2D static 
+Typical values are ``0``--``6`` for the time coordinate and ``0``--``4`` for the
+spatial coordinates. In ``example_dynamic_imaging.py`` the same list serves both
+networks: the 3D dynamic network receives ``tuple(h.nposenc)`` and the 2D static
 network receives ``tuple(h.nposenc[-2:])``, i.e. the spatial entries only.
+Similarly, in ``example_spectral_imaging.py`` and
+``example_multifreq_multiepoch_imaging.py`` the spectral model (which has no
+frequency input) receives ``nposenc`` without its frequency entry.
 
 Network Architecture
 --------------------
@@ -409,6 +431,34 @@ See also :doc:`user_guide` block 6.
      - Scaling of the linear polarization fraction channel,
        ``sigmoid(x - outshift) * scaling_ml``, i.e. the maximum fractional
        polarization the network can produce.
+   * - ``remat``
+     - bool
+     - ``false``
+     - ``False``
+     - If true, recompute the activations of each hidden layer in the
+       backward pass instead of storing them. This roughly halves the training
+       memory of the network, at the cost of extra computation per step.
+   * - ``spectral_model``
+     - str
+     - ``free``
+     - script
+     - Emission model of spectral imaging: ``free`` for a
+       :class:`~kine.model.NeuralField` with the frequency as an additional input
+       coordinate, ``powerlaw`` or ``curved`` for a
+       :class:`~kine.model.NeuralFieldSpectral` with a power-law spectrum,
+       without or with a curvature term.
+   * - ``nu_ref_ghz``
+     - float
+     - ``220``
+     - script
+     - Reference frequency in GHz of the spectral model, at which the network
+       predicts :math:`I_0`. 
+   * - ``alpha_range``
+     - float
+     - ``3.0``
+     - ``3.0``
+     - Bound of the spectral index of the spectral model,
+       :math:`\alpha \in [-\mathrm{alpha\_range}, \mathrm{alpha\_range}]`.
 
 The remaining network arguments are set in the scripts rather than in the YAML
 file: ``activ`` (``nn.gelu``, or :func:`kine.model.sharpgelu` through
@@ -422,21 +472,23 @@ Parameters by scenario
 ----------------------
 
 Keys defined by each parameter file shipped in ``parameters/``
-(``params_static_imaging.yml``, ``params_multifreq_imaging.yml``,
-``params_multiepoch_imaging.yml``, ``params_dynamic_imaging.yml``,
-``params_dynamic_imaging_pol.yml``):
+(``params_static_imaging.yml``, ``params_spectral_imaging.yml``,
+``params_multiepoch_imaging.yml``, ``params_multifreq_multiepoch_imaging.yml``,
+``params_dynamic_imaging.yml``, ``params_dynamic_imaging_pol.yml``):
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 16 16 16 15 15
+   :widths: 20 12 12 14 16 13 13
 
    * - Parameter
      - Static
      - Spectral
      - Multi-epoch
+     - Multi-freq. multi-epoch
      - Dynamic
      - Dynamic pol.
    * - ``tavg``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -448,7 +500,9 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
    * - ``tflag``
+     -
      -
      -
      -
@@ -458,9 +512,18 @@ Keys defined by each parameter file shipped in ``parameters/``
      -
      -
      -
+     -
      - ✓
      - ✓
+   * - ``freq_tol``
+     -
+     -
+     -
+     - ✓
+     -
+     -
    * - ``fov_uas``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -470,11 +533,20 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
      - ``_0 _1 _2``
      - ✓
    * - ``npix_out``
      - ✓
      - ✓
+     - ✓
+     - ✓
+     -
+     -
+   * - ``tdil``, ``fdil``
+     -
+     -
+     -
      - ✓
      -
      -
@@ -484,13 +556,16 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
    * - ``gains_prior``
+     -
      -
      -
      -
      - ✓
      -
    * - ``init_params``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -502,13 +577,16 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
    * - ``niter``
+     - ✓
      - ✓
      - ✓
      - ✓
      - ``_0 _1 _2``
      - ✓
    * - ``initniter``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -520,7 +598,9 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
    * - ``depth``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -532,7 +612,9 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
    * - ``outshift``
+     - ✓
      - ✓
      - ✓
      - ✓
@@ -543,10 +625,40 @@ Keys defined by each parameter file shipped in ``parameters/``
      - ✓
      - ✓
      - ✓
+     - ✓
      -
    * - ``scaling_ml``
      -
      -
      -
      -
+     -
      - ✓
+   * - ``remat``
+     - ✓
+     - ✓
+     - ✓
+     - ✓
+     - ✓
+     - ✓
+   * - ``spectral_model``
+     -
+     - ✓
+     -
+     - ✓
+     -
+     -
+   * - ``nu_ref_ghz``
+     -
+     - ✓
+     -
+     - ✓
+     -
+     -
+   * - ``alpha_range``
+     -
+     - ✓
+     -
+     - ✓
+     -
+     -

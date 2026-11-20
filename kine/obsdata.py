@@ -70,6 +70,42 @@ class Obsdata(eh.obsdata.Obsdata):
         argl, argd = obs.obsdata_args()
         return cls(*argl, **argd)
 
+    def tlist(
+            self,
+            conj: bool = False,
+            t_gather: float = 0.,
+            scan_gather: bool = False
+    ) -> NDArray:
+        """Group the data in a list of equal time observation datatables.
+
+        Wraps ehtim's tlist. When all time groups have the same length, ehtim's 
+        ``np.array(datalist, dtype=object)`` collapses them into a 2D object 
+        array of tuples, losing the field names, breaking every method built on 
+        it. In that case a 1D object array of record arrays is rebuilt instead.
+
+        Args:
+            conj: If true, include conjugate baselines.
+            t_gather: Grouping timescale (in seconds).
+            scan_gather: If true, gather data into scans.
+
+        Returns:
+            1D object array of time-partitioned data tables.
+        """
+        tlist = super().tlist(
+            conj=conj,
+            t_gather=t_gather,
+            scan_gather=scan_gather
+        )
+        if tlist.ndim == 1:
+            return tlist
+        # Collapsed case: groups are consecutive and of equal length
+        data = self.data_conj() if conj else self.data
+        ngroups, nvis = tlist.shape[:2]
+        out = np.empty(ngroups, dtype=object)
+        for i in range(ngroups):
+            out[i] = data[i*nvis : (i+1)*nvis]
+        return out
+
     def get_zbl(self, mode: str = 'max') -> float:
         """Get shortest baseline flux density.
 
@@ -566,21 +602,6 @@ class Obsdata(eh.obsdata.Obsdata):
             )
         return ut.list_to_jaxarr(target, sigma, padmask)
 
-    def _tlist(self, conj: bool = False) -> list[NDArray]:
-        """Group the data by time, as a list of record arrays.
-
-        Args:
-            conj: If true, include conjugate baselines.
-
-        Returns:
-            List of record arrays, one per time stamp.
-        """
-        data = self.data_conj() if conj else self.data
-        return [
-            np.array(list(group), dtype=data.dtype)
-            for _, group in it.groupby(data, lambda x: x['time'])
-        ]
-
     def get_baselines_nfft(self, conj: bool = True) -> list:
         """Retrieve baselines codenames.
 
@@ -591,7 +612,7 @@ class Obsdata(eh.obsdata.Obsdata):
             List of baselines codenames.
         """
         # Extract baseline names
-        tlist = self._tlist(conj=conj)
+        tlist = self.tlist(conj=conj)
         blines = []
         for tdata in tlist:
             blines.append([(dat['t1'], dat['t2']) for dat in tdata])
@@ -608,7 +629,7 @@ class Obsdata(eh.obsdata.Obsdata):
             Scaled uv coordinates.
         """
         # Extract uv coordinates
-        tlist = self._tlist(conj=conj)
+        tlist = self.tlist(conj=conj)
         us, vs = [], []
         for tdata in tlist:
             us.append([dat['u'] * psize * 2 * np.pi for dat in tdata])
@@ -642,7 +663,7 @@ class Obsdata(eh.obsdata.Obsdata):
         Returns:
             Closure phases or closure amplitudes codenames.
         """
-        tlist = self._tlist(conj=True)
+        tlist = self.tlist(conj=True)
         closures = []
         for tdata in tlist:
             sites = list(set(np.hstack((tdata['t1'], tdata['t2']))))
@@ -714,8 +735,8 @@ class Obsdata(eh.obsdata.Obsdata):
         Returns:
             List of variable required for simultaneous gain fitting.
         """
-        # Get antenna codenames and index
-        sites = self.tkey
+        # Get antenna codenames and index 
+        sites = dict(self.tkey)
         # Get number of visibilities
         nvis = len(sites) * (len(sites) - 1) // 2
         # Update sites dict with a padding antenna for vectorization
@@ -752,7 +773,9 @@ class Obsdata(eh.obsdata.Obsdata):
         # Extract baseline names
         blines = []
         for obs in obslist:
-            blines.append(list(obs.unpack(['t1', 't2'], conj=conj)))
+            blines.append(
+                [tuple(b) for b in obs.unpack(['t1', 't2'], conj=conj)]
+            )
         # Pad data
         maxv = np.max([len(b) for b in blines])
         for i, _ in enumerate(blines):

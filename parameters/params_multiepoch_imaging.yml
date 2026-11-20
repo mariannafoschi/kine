@@ -24,10 +24,10 @@ data_prod: [cphaseI, logcampI]
 # -----------------------------
 
 init_params:
-  fwhm: 60
-  blur: 20
-  posx: -50 #negative is left
-  posy: 50 #negative is up
+  fwhm: 60 # (uas)
+  blur: 20 # (uas)
+  posx: -50 # (px) negative is left
+  posy: 50 # (px) negative is up
 
 # Training
 # -----------------------------
@@ -47,3 +47,6 @@ depth: 6
 width: 256
 outshift: 10
 scaling_i: 1
+
+# Recompute layers instead of storing them (less memory, more compute)
+remat: false

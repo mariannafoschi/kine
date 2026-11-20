@@ -26,6 +26,7 @@ References:
     variable interferometric observations with neural fields." Under rev. (2026)
 """
 
+import os
 import glob
 import queue
 import argparse
@@ -64,6 +65,7 @@ ut.init_worker(fi.Video.async_plot, q)
 par = argparse.ArgumentParser()
 par.add_argument('-obs', type=str, help='uvfits file name')
 par.add_argument('-yml', type=str, help='hyperparameter file name')
+par.add_argument('-out', type=str, required=True, help='output folder name')
 par = par.parse_args()
 
 # Load hyperparameters from YAML file
@@ -74,6 +76,10 @@ h = ut.HyperParams(h)
 # Set RNG keys
 rkey = jax.random.PRNGKey(h.seed)
 np.random.seed(h.seed)
+
+# Make output directory if it does not exist
+outdir = os.path.join(par.out, '')
+os.makedirs(outdir, exist_ok=True)
 
 # ______________________________________________________________________________
 # Load and pre-process data
@@ -206,16 +212,10 @@ network = mo.NeuralField(
     activ=nn.gelu,
     outactiv=nn.softplus,
     outshift=h.outshift,
-    scaling_i=h.scaling_i
+    scaling_i=h.scaling_i,
+    remat=h.remat
 )
-batch_stats = network.init(
-    rkey,
-    jnp.ones([grid.shape[-1]]), train=True
-)
-params = network.init(
-    rkey,
-    jnp.ones([grid.shape[-1]]), train=True
-)
+variables = network.init(rkey, jnp.ones([grid.shape[-1]]), train=True)
 
 # Schedule and train state
 sched = optax.piecewise_constant_schedule(
@@ -224,8 +224,8 @@ sched = optax.piecewise_constant_schedule(
 )
 state = tr.Trainer.create(
     apply_fn=network.apply,
-    params=params['params'],
-    batch_stats=batch_stats['batch_stats'],
+    params=variables['params'],
+    batch_stats=variables['batch_stats'],
     tx=optax.adamax(sched)
 )
 
@@ -245,7 +245,7 @@ init_vid = fi.Video(
     dates=dates
 )
 init_vid.add_tophat(lcurve, h.init_params)
-init_vid.plot()
+init_vid.plot(outpath=outdir+'tmp.png')
 
 # .......................
 # Initialization training
@@ -293,7 +293,7 @@ for i in (pbar := tqdm(range(1, h.initniter+1))):
                 loss=lloss,
                 scale='log',
                 drange=5e2,
-                outpath='./init_1.png'
+                outpath=outdir+'init_1.png'
             )
         )
 
@@ -351,7 +351,7 @@ for i in (pbar := tqdm(range(1, h.niter+1))):
                 loss=lloss,
                 scale='log',
                 drange=5e3,
-                outpath='./out_1.png'
+                outpath=outdir+'out_1.png'
             )
         )
 
@@ -366,7 +366,7 @@ Saving results...
     """
 )
 video.from_video(out, loss=lloss)
-video.plot_gif(scale='log', drange=5e2, outpath='./out_1.gif')
+video.plot_gif(scale='log', drange=5e2, outpath=outdir+'out_1.gif')
 
 # ______________________________________________________________________________
 # Save video, gains, and model parameters
@@ -382,4 +382,4 @@ Sampling network on a finer grid and saving results...
 )
 video = fi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter, dates=dates)
 video.from_state(state, grid, npix_train=h.npix)
-video.save_h5('./video_1.h5')
+video.save_h5(outdir+'video_1.h5')

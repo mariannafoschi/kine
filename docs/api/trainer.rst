@@ -41,8 +41,10 @@ argument. Instead it calls ``_loss_fn_red``, which delegates to
 present in* ``kwargs`` (``init_arr`` selects the initialization loss,
 ``uvpoints`` the NUFFT loss, ``s_grid`` the static + dynamic decomposition,
 and so on). The chosen loss then assembles a ``chi2`` term per requested
-data product through ``_loss_chi``, if requested adds the regularizer terms, and 
-sums them.
+data product through ``_loss_chi``, if requested adds the regularizer terms, and
+sums them. In the NUFFT loss, ``lognu`` selects the spectral emission model of
+spectral and spectral-multiepoch imaging, and ``mask`` excludes frames
+without data from the light-curve term.
 
 Top-level losses
 ................

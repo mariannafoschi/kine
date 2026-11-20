@@ -15,6 +15,8 @@
 
 """Image and Video object creation, plotting and related tasks."""
 
+import os
+import traceback
 from typing import Any
 from collections.abc import Callable
 
@@ -28,6 +30,7 @@ from jax import numpy as jnp
 from jax.typing import ArrayLike
 
 from . import utils as ut
+from . import model as mo
 
 """ Creation, plotting, etc. of image and video arrays in full polarization.
     The Image and Video classes aim to have all image and video arrays organized
@@ -103,6 +106,34 @@ def _centres(fov: float, npix: int) -> np.ndarray:
     """Pixel-centre positions in uas, matching the plots' extent (RA left)."""
     half = (fov/2 - fov/npix/2) / eh.RADPERUAS
     return np.linspace(half, -half, npix)
+
+def _draw_loss(ax: Any, loss: list[float] | dict, niter: int) -> None:
+    """Draw the training loss curve(s) on a plot panel.
+
+    Args:
+        ax: Matplotlib axis to draw on.
+        loss: Loss values, either a list or a dictionary of named lists (one
+            per data product or regularizer). For a dictionary, a reference
+            line marks a reduced chi-squared of 1.
+        niter: Total number of iterations, used for the x-axis range.
+    """
+    ax.clear()
+    losses = loss if isinstance(loss, dict) else {'loss': loss}
+    for name, curve in losses.items():
+        ax.plot(
+            np.linspace(0, len(curve), len(curve[::50])),
+            curve[::50],
+            label=f'{name} = {curve[-1]:.3e}'
+        )
+    if isinstance(loss, dict):
+        ax.axhline(1, c='k', lw=0.5, zorder=0)
+    ax.set_yscale('log')
+    ax.set_xlim(-niter/50, niter+niter/50)
+    ax.set_xlabel('iterations')
+    ax.yaxis.tick_right()
+    ax.grid(alpha=0.5)
+    ax.set_box_aspect(1)
+    ax.legend(loc='upper right', bbox_to_anchor=(1, 1), fontsize=12)
 
 class Image:
     """A polarimetric image array with metadata.
@@ -353,22 +384,16 @@ class Image:
         # Scale bar
         barl = self.fov / eh.RADPERUAS / 5
 
-        # Select frames to show
         # Titles, colormaps, etc
         cmap = ['inferno', 'viridis', 'twilight', 'coolwarm']
         label = ['Stokes I', 'Lin. pol. frac.', 'EVPA', 'Circ. pol. frac.']
-        # Subfiguring
-        fig = plt.figure(figsize=(5, 6*self.polchan))
-        subfigs = fig.subfigures(self.polchan, 1)
-        subfigs = np.atleast_1d(subfigs)
+        # Subfiguring: one row per polarization channel.
+        ncols = 2 if self.loss is not None else 1
+        fig = plt.figure(figsize=(5*ncols, 6*self.polchan))
+        subfigs = np.atleast_1d(fig.subfigures(self.polchan, 1))
         # Plotting
         for j, subfig in enumerate(subfigs):
-            if self.loss is not None and j == 0:
-                ncols = 2
-            else:
-                ncols = 1
-            ax = subfig.subplots(1, ncols)
-            ax = np.atleast_1d(ax).ravel()
+            ax = subfig.subplots(1, ncols, squeeze=False).ravel()
             arr = (self.iarr, self.larr, self.xarr, self.carr)[j]
             offset, norm = _norm(arr, j, scale, drange)
             # Stokes I, ml, EVPA, and mc
@@ -421,7 +446,7 @@ class Image:
             ax[0].text(
                 0.1,
                 -0.03,
-                f'{round(barl):1d} $\mu$as',
+                rf'{round(barl):1d} $\mu$as',
                 c='k',
                 ha='center',
                 va='top',
@@ -436,46 +461,14 @@ class Image:
                 lw=3,
                 clip_on=False
             )
-            # Loss progress
-            if self.loss is not None and j == 0:
-                ax[-1].clear()
-                if isinstance(self.loss, dict):
-                    for l in self.loss:
-                        ax[-1].plot(
-                            np.linspace(
-                                0,
-                                len(self.loss[l]),
-                                len(self.loss[l][::50])
-                            ),
-                            self.loss[l][::50],
-                            label=f'{l} = {self.loss[l][-1]:.3e}'
-                        )
-                        ax[-1].axhline(1, c='k', lw=0.5, zorder=0)
+            # Loss panel 
+            if self.loss is not None:
+                if j == 0:
+                    _draw_loss(ax[1], self.loss, self.niter)
                 else:
-                    ax[-1].plot(
-                        np.linspace(
-                            0,
-                            len(self.loss),
-                            len(self.loss[::50])
-                        ),
-                        self.loss[::50],
-                        label=f'loss = {self.loss[-1]:.3e}'
-                    )
-                ax[-1].set_yscale('log')
-                ax[-1].set_xlim(-self.niter/50, self.niter+self.niter/50)
-                ax[-1].set_xlabel('iterations')
-                ax[-1].yaxis.tick_right()
-                ax[-1].grid(alpha=0.5)
-                ax[-1].set_aspect('auto')
-                ax[-1].set_adjustable('box')
-                ax[-1].set_box_aspect(1)
-                ax[-1].legend(
-                    loc='upper right',
-                    bbox_to_anchor=(1, 1),
-                    fontsize=12
-                )
-                # Adjust plots spacing
-                subfig.subplots_adjust(wspace=0.05)
+                    ax[1].axis('off')
+            # Adjust plots spacing
+            subfig.subplots_adjust(wspace=0.05)
         fig.tight_layout()
 
         # Show interactive plot or save to file
@@ -512,8 +505,14 @@ class Image:
             image.plot(**kwargs)
         # Unpack queue
         while True:
-            _async_plot_impl(**q.get())
-            q.task_done()
+            try:
+                _async_plot_impl(**q.get())
+            except Exception:
+                # Report the error but keep the worker alive, so that
+                # q.join() in the main script does not hang
+                traceback.print_exc()
+            finally:
+                q.task_done()
 
     def save_fits(self, outpath: str = './image.fits') -> None:
         """Save image to fits file.
@@ -805,16 +804,19 @@ class Video:
             self,
             inpath: str,
             blur: float = 0,
-            fn: Callable | None = None
+            fn: Callable | None = None,
+            normalize: bool = True
     ) -> None:
         """Create Video object from input h5 file.
-           
+
            Currently it only supports Stokes I.
 
         Args:
             inpath: Input path of h5 file.
             blur: Blurring factor in uas.
             fn: Time averaging function (np.mean, np.median, etc.).
+            normalize: If true, rescale each frame to unit total flux.
+                If false, keep the original flux density of each frame.
         """
         init = eh.movie.load_hdf5(inpath).im_list()
         init = [ut.regrid_image(im, self.fov, self.npix) for im in init]
@@ -823,7 +825,8 @@ class Video:
         init = [im.imarr() for im in init]
         if fn is not None:
             init = [fn(init, axis=0) for _ in init]
-        init = [im/im.sum() for im in init]
+        if normalize:
+            init = [im/im.sum() for im in init]
         init = jnp.array(init) if len(self.times) > 1 else jnp.array([init[0]])
         self.iarr = init.reshape(-1, self.npix, self.npix, 1)
 
@@ -872,27 +875,23 @@ class Video:
 
         # Single dynamic network polarimetric plotting
         if s_out is None:
-            # Select frames to show
-            if len(self.times) >= 8:
-                nrow, ncol = 2, 4
-                frames = np.linspace(0, len(self.times)-1, 8, dtype=int)
-            elif len(self.times) > 4 and len(self.times) < 8:
-                nrow, ncol = 1, 4
-                frames = np.linspace(0, len(self.times)-1, 4, dtype=int)
-            else:
-                nrow, ncol = 1, len(self.times) + int(self.loss is not None)
-                frames = np.arange(len(self.times), dtype=int)
+            # Select the frames to show
+            nframes = len(self.times)
+            has_loss = self.loss is not None
+            ncell = min(nframes + int(has_loss), 8)
+            nshow = ncell - int(has_loss)
+            frames = np.linspace(0, nframes-1, nshow, dtype=int)
+            ncol = min(4, ncell)
+            nrow = int(np.ceil(ncell / ncol))
             # Titles, colormaps, etc
             cmap = ['inferno', 'viridis', 'twilight', 'coolwarm']
             label = ['Stokes I', 'Lin. pol. frac.', 'EVPA', 'Circ. pol. frac.']
-            # Subfiguring
+            # Subfiguring: one block of panels per polarization channel
             fig = plt.figure(figsize=(5*ncol, ((5*nrow)+1)*self.polchan))
-            subfigs = fig.subfigures(self.polchan, 1)
-            subfigs = np.atleast_1d(subfigs)
+            subfigs = np.atleast_1d(fig.subfigures(self.polchan, 1))
             # Plotting
             for j, subfig in enumerate(subfigs):
-                ax = subfig.subplots(nrow, ncol)
-                ax = np.atleast_1d(ax).ravel()
+                ax = subfig.subplots(nrow, ncol, squeeze=False).ravel()
                 arr = (self.iarr, self.larr, self.xarr, self.carr)[j]
                 offset, norm = _norm(arr, j, scale, drange)
                 for i, f in enumerate(frames):
@@ -928,28 +927,21 @@ class Video:
                             fontsize=12,
                             transform=ax[i].transAxes
                         )
+                    # Time or date label
                     if not isinstance(self.dates, list):
-                        ax[i].text(
-                            0.5,
-                            1.02,
-                            f'{self.times[f]:.2f} UT',
-                            c='k',
-                            ha='center',
-                            va='bottom',
-                            fontsize=16,
-                            transform=ax[i].transAxes
-                        )
+                        frame_label = f'{self.times[f]:.2f} UT'
                     else:
-                        ax[i].text(
-                            0.5,
-                            1.02,
-                            f'{self.dates[f]}',
-                            c='k',
-                            ha='center',
-                            va='bottom',
-                            fontsize=16,
-                            transform=ax[i].transAxes
-                        )
+                        frame_label = f'{self.dates[f]}'
+                    ax[i].text(
+                        0.5,
+                        1.02,
+                        frame_label,
+                        c='k',
+                        ha='center',
+                        va='bottom',
+                        fontsize=16,
+                        transform=ax[i].transAxes
+                    )
                     # Pol. field vectors on top of Stokes I
                     if self.qarr is not None and j == 0:
                         x = y = _centres(self.fov, self.npix)
@@ -989,7 +981,7 @@ class Video:
                 ax[0].text(
                     0.1,
                     -0.03,
-                    f'{round(barl):1d} $\mu$as',
+                    rf'{round(barl):1d} $\mu$as',
                     c='k',
                     ha='center',
                     va='top',
@@ -1004,44 +996,13 @@ class Video:
                     lw=3,
                     clip_on=False
                 )
-                # Loss progress
-                if self.loss is not None and j == 0:
-                    ax[-1].clear()
-                    if isinstance(self.loss, dict):
-                        for l in self.loss:
-                            ax[-1].plot(
-                                np.linspace(
-                                    0,
-                                    len(self.loss[l]),
-                                    len(self.loss[l][::50])
-                                ),
-                                self.loss[l][::50],
-                                label=f'{l} = {self.loss[l][-1]:.3e}'
-                            )
-                            ax[-1].axhline(1, c='k', lw=0.5, zorder=0)
-                    else:
-                        ax[-1].plot(
-                            np.linspace(
-                                0,
-                                len(self.loss),
-                                len(self.loss[::50])
-                            ),
-                            self.loss[::50],
-                            label=f'loss = {self.loss[-1]:.3e}'
-                        )
-                    ax[-1].set_yscale('log')
-                    ax[-1].set_xlim(-self.niter/50, self.niter+self.niter/50)
-                    ax[-1].set_xlabel('iterations')
-                    ax[-1].yaxis.tick_right()
-                    ax[-1].grid(alpha=0.5)
-                    ax[-1].set_aspect('auto')
-                    ax[-1].set_adjustable('box')
-                    ax[-1].set_box_aspect(1)
-                    ax[-1].legend(
-                        loc='upper right',
-                        bbox_to_anchor=(1, 1),
-                        fontsize=12
-                    )
+                # Loss panel 
+                nused = nshow
+                if has_loss and j == 0:
+                    _draw_loss(ax[nshow], self.loss, self.niter)
+                    nused += 1
+                for a in ax[nused:]:
+                    a.axis('off')
                 # Adjust plots spacing
                 subfig.subplots_adjust(hspace=-0.05, wspace=0.05)
             fig.tight_layout()
@@ -1123,7 +1084,7 @@ class Video:
                 ax['l'].text(
                     0.1,
                     -0.04,
-                    f'{round(barl):1d} $\mu$as',
+                    rf'{round(barl):1d} $\mu$as',
                     c='k',
                     ha='center',
                     va='top',
@@ -1218,7 +1179,7 @@ class Video:
             ax['x'].text(
                 0.1,
                 -0.04,
-                f'{round(barl):1d} $\mu$as',
+                rf'{round(barl):1d} $\mu$as',
                 c='k',
                 ha='center',
                 va='top',
@@ -1489,7 +1450,7 @@ class Video:
             ax[0].text(
                 0.1,
                 -0.03,
-                f'{round(barl):1d} $\mu$as',
+                rf'{round(barl):1d} $\mu$as',
                 c='k',
                 ha='center',
                 va='top',
@@ -1549,8 +1510,14 @@ class Video:
             video.plot(**kwargs)
         # Unpack queue
         while True:
-            _async_plot_impl(**q.get())
-            q.task_done()
+            try:
+                _async_plot_impl(**q.get())
+            except Exception:
+                # Report the error but keep the worker alive, so that
+                # q.join() in the main script does not hang
+                traceback.print_exc()
+            finally:
+                q.task_done()
 
     def save_gains(self, outpath: str = './gains.txt') -> None:
         """Save fitted gains to text file.
@@ -1606,3 +1573,419 @@ class Video:
             frames.append(frame)
         with ut.no_print():
             eh.movie.merge_im_list(frames).save_hdf5(outpath)
+
+class SpectralVideo:
+    """A multi-frequency multi-epoch total intensity video with metadata.
+
+    Holds the frames of multi-frequency multi-epoch imaging on a regular
+    (epoch, frequency) grid. Frames are stored along a single axis in
+    epoch-major order (frame ``k`` is epoch ``k // nf`` and band ``k % nf``) and 
+    reshaped to (nt, nf, npix, npix) for plotting and saving. With the spectral 
+    emission model (:class:`kine.model.NeuralFieldSpectral`) the spectral-index 
+    maps are stored as well. Stokes I only.
+
+    Attributes:
+        times: Epoch of each row (mjd), length nt.
+        freqs: Band centre frequency of each column in Hz, length nf.
+        dates: Optional YYYY-MM-DD labels of the epochs.
+        npix: Number of pixels.
+        fov: Field of view in radians.
+        ra: Right ascension in fractional hours.
+        dec: Declination in fractional degrees.
+        niter: Current number of iterations. Mainly for plotting.
+        nt: Number of epochs.
+        nf: Number of frequency bands.
+        iarr: Stokes I video array, shape (nt*nf, npix, npix, 1).
+        aarr: Spectral index map at each epoch, shape (nt, npix, npix, 1),
+            or None for the free 4D field.
+        barr: Spectral curvature map, same shape as `aarr`, or None.
+        loss: Current loss value. Mainly for plotting.
+    """
+
+    def __init__(
+            self,
+            times: ArrayLike,
+            freqs: ArrayLike,
+            npix: int,
+            fov: float,
+            ra: float,
+            dec: float,
+            niter: int,
+            dates: list[str] | None = None
+    ) -> None:
+        """Initialize class attributes.
+
+        Args:
+            times: Epoch of each row (mjd), length nt.
+            freqs: Band centre frequency of each column in Hz, length nf.
+            npix: Number of pixels.
+            fov: Field of view in radians.
+            ra: Right ascension in fractional hours.
+            dec: Declination in fractional degrees.
+            niter: Current number of iterations.
+            dates: Optional YYYY-MM-DD labels of the epochs.
+        """
+        self.times: ArrayLike = times
+        self.freqs: ArrayLike = freqs
+        self.dates: list[str] | None = dates
+        self.npix: int = npix
+        self.fov: float = fov
+        self.ra: float = ra
+        self.dec: float = dec
+        self.niter: int = niter
+        self.nt: int = len(times)
+        self.nf: int = len(freqs)
+        self.iarr: ArrayLike | None = None
+        self.aarr: ArrayLike | None = None
+        self.barr: ArrayLike | None = None
+        self.loss: list[float] | dict | None = None
+
+    def grid_iarr(self) -> ArrayLike:
+        """Stokes I video reshaped to (nt, nf, npix, npix)."""
+        return self.iarr[..., 0].reshape(self.nt, self.nf, self.npix, self.npix)
+
+    def from_video(
+            self,
+            out: ArrayLike,
+            loss: list[float] | dict | None = None
+    ) -> None:
+        """Create SpectralVideo from a per-frame video array.
+
+        Args:
+            out: Video array of shape (nt*nf, npix, 1), i.e. the output of
+                the free 4D field or of the expanded spectral model.
+            loss: Current loss value.
+        """
+        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1)
+        self.loss = loss
+
+    def from_state(
+            self,
+            state: Callable,
+            grid: ArrayLike,
+            lognu: ArrayLike | None = None,
+            loss: list[float] | dict | None = None,
+            npix_train: int | None = None
+    ) -> None:
+        """Create SpectralVideo from current network's state.
+
+        Without `lognu` the network is the free 4D field, sampled on the
+        (t, f, x, y) grid. With `lognu` it is the spectral emission model,
+        sampled on the (t, x, y) or (x, y) grid.
+
+        The network's Stokes I output is in Jy per training pixel. When `grid`
+        has a different number of pixels than the training grid, pass
+        `npix_train` so that Stokes I is rescaled to Jy per pixel of this
+        video and the total flux density is preserved.
+
+        Args:
+            state: Current network's state.
+            grid: Input coordinates from :func:`kine.utils.get_grid`.
+            lognu: Log-frequency offsets from :func:`kine.utils.get_lognu`,
+                for the spectral emission model only.
+            loss: Current loss value.
+            npix_train: Number of pixels of the grid the network was trained on.
+        """
+        out, _ = state.apply_fn(
+            {'params': state.params, 'batch_stats': state.batch_stats},
+            grid, train=True, mutable=['batch_stats']
+        )
+        if lognu is not None:
+            shape = (self.nt, self.npix, self.npix, 1)
+            self.aarr = out[..., 1].reshape(shape)
+            if out.shape[-1] == 3:
+                self.barr = out[..., 2].reshape(shape)
+            out = mo.NeuralFieldSpectral.expand(out, lognu)
+        fluxfac = 1.0 if npix_train is None else (npix_train / self.npix)**2
+        self.iarr = out[..., 0].reshape(-1, self.npix, self.npix, 1) * fluxfac
+        self.loss = loss
+
+    def plot(
+            self,
+            scale: str = 'lin',
+            drange: float = 1e3,
+            show: bool = False,
+            outpath: str = './tmp.png'
+    ) -> None:
+        """Plot the Stokes I frames, one row per epoch and one column per band.
+
+        Args:
+            scale: 'lin' for linear color scale, 'log' for logarithmic.
+            drange: Image dynamic range. Used when scale='log'.
+            show: If true, show interactive plot.
+            outpath: Path and filename for figure saving.
+        """
+        # Preamble
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Helvetica', 'DejaVu Sans']
+        plt.rcParams['font.size'] = 14
+        plt.rcParams['image.interpolation'] = 'bicubic'
+        # Extent
+        extent = [
+            self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            self.fov/2/eh.RADPERUAS
+        ]
+        barl = self.fov / eh.RADPERUAS / 5
+        # Colour normalization shared by all panels
+        video = np.asarray(self.grid_iarr())
+        offset, norm = _norm(video, 0, scale, drange)
+        # Select the epochs to show (all bands are shown)
+        nrow = min(self.nt, 8)
+        rows = np.linspace(0, self.nt-1, nrow, dtype=int)
+        ncol = self.nf + int(self.loss is not None)
+        # Figure
+        fig, ax = plt.subplots(
+            nrow, ncol,
+            figsize=(4*ncol, 4*nrow),
+            squeeze=False
+        )
+        for r, e in enumerate(rows):
+            for c in range(self.nf):
+                a = ax[r, c]
+                a.imshow(
+                    video[e, c] + offset, extent=extent, norm=norm,
+                    cmap='inferno'
+                )
+                a.set_xticks([])
+                a.set_yticks([])
+                a.text(
+                    0.98, 0.02, f'$S_{{tot}}$: {video[e, c].sum():.1f} Jy',
+                    c='w', ha='right', va='bottom', fontsize=10,
+                    transform=a.transAxes
+                )
+                # Column titles (band) on the top row
+                if r == 0:
+                    a.set_title(f'{float(self.freqs[c])/1e9:.1f} GHz')
+                # Row labels (epoch) on the first column
+                if c == 0:
+                    label = self.dates[e] if self.dates is not None \
+                        else f'{float(self.times[e]):.2f}'
+                    a.text(
+                        -0.05, 0.5, label, c='k', ha='right', va='center',
+                        rotation=90, transform=a.transAxes
+                    )
+        # Loss panel
+        if self.loss is not None:
+            _draw_loss(ax[0, -1], self.loss, self.niter)
+            for a in ax[1:, -1]:
+                a.axis('off')
+        # Scale bar on the bottom-left panel
+        ax[-1, 0].text(
+            0.1, -0.03, rf'{round(barl):1d} $\mu$as', c='k', ha='center',
+            va='top', transform=ax[-1, 0].transAxes
+        )
+        ax[-1, 0].hlines(
+            -0.02, 0, 0.2, transform=ax[-1, 0].transAxes, colors='k',
+            lw=3, clip_on=False
+        )
+        fig.tight_layout()
+        if show:
+            plt.show()
+        else:
+            fig.savefig(outpath, bbox_inches='tight')
+            plt.close()
+
+    def plot_spectral_index(
+            self,
+            show: bool = False,
+            outpath: str = './alpha.png'
+    ) -> None:
+        """Plot the spectral-index map at each epoch.
+
+        Args:
+            show: If true, show interactive plot.
+            outpath: Path and filename for figure saving.
+
+        Raises:
+            ValueError: If no spectral-index map is available.
+        """
+        if self.aarr is None:
+            raise ValueError(
+                'No spectral-index map available: sample the spectral '
+                'emission model with from_state(..., lognu=...).'
+            )
+        # Preamble
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Helvetica', 'DejaVu Sans']
+        plt.rcParams['font.size'] = 14
+        plt.rcParams['image.interpolation'] = 'bicubic'
+        # Extent
+        extent = [
+            self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            self.fov/2/eh.RADPERUAS
+        ]
+        # Mask the spectral index where there is negligible flux
+        alpha = np.asarray(self.aarr[..., 0])
+        flux = np.asarray(self.grid_iarr()).mean(axis=1)
+        alpha = np.where(flux > flux.max() / 100, alpha, np.nan)
+        # Symmetric limits for the diverging colour map (alpha = 0 at init)
+        vlim = np.nanmax(np.abs(alpha)) or 1.0
+        # Select the epochs to show
+        ncol = min(self.nt, 8)
+        cols = np.linspace(0, self.nt-1, ncol, dtype=int)
+        # Figure
+        fig, ax = plt.subplots(1, ncol, figsize=(4*ncol, 4), squeeze=False)
+        for i, e in enumerate(cols):
+            im = ax[0, i].imshow(
+                alpha[e], extent=extent, cmap='coolwarm',
+                vmin=-vlim, vmax=vlim
+            )
+            ax[0, i].set_xticks([])
+            ax[0, i].set_yticks([])
+            label = self.dates[e] if self.dates is not None \
+                else f'{float(self.times[e]):.2f}'
+            ax[0, i].set_title(label)
+        fig.colorbar(
+            im, ax=ax.ravel().tolist(), fraction=0.046, pad=0.04,
+            label=r'spectral index $\alpha$'
+        )
+        if show:
+            plt.show()
+        else:
+            fig.savefig(outpath, bbox_inches='tight')
+            plt.close()
+
+    def plot_gif(
+            self,
+            scale: str = 'lin',
+            drange: float = 1e3,
+            outpath: str = './video.gif'
+    ) -> None:
+        """Plot gif of the Stokes I video, one panel per frequency band.
+
+        Each gif frame is one epoch. The colour normalization is shared by all
+        bands and epochs, as in :meth:`plot`.
+
+        Args:
+            scale: 'lin' for linear color scale, 'log' for logarithmic.
+            drange: Image dynamic range. Used when scale='log'.
+            outpath: Path and filename for figure saving.
+        """
+        # Preamble
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Helvetica', 'DejaVu Sans']
+        plt.rcParams['font.size'] = 14
+        plt.rcParams['image.interpolation'] = 'bicubic'
+        # Extent
+        extent = [
+            self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            -self.fov/2/eh.RADPERUAS,
+            self.fov/2/eh.RADPERUAS
+        ]
+        barl = self.fov / eh.RADPERUAS / 5
+        # Colour normalization shared by all panels and epochs
+        video = np.asarray(self.grid_iarr())
+        offset, norm = _norm(video, 0, scale, drange)
+        # Figure with one panel per band, drawn once and updated at each epoch
+        fig, ax = plt.subplots(
+            1, self.nf,
+            figsize=(5*self.nf, 6),
+            squeeze=False
+        )
+        ax = ax[0]
+        ims, stot = [], []
+        for c in range(self.nf):
+            ims.append(ax[c].imshow(
+                video[0, c] + offset, extent=extent, norm=norm, cmap='inferno'
+            ))
+            ax[c].set_title(f'{float(self.freqs[c])/1e9:.1f} GHz')
+            ax[c].set_xticks([])
+            ax[c].set_yticks([])
+            stot.append(ax[c].text(
+                1, -0.01, '', c='k', ha='right', va='top', fontsize=10,
+                transform=ax[c].transAxes
+            ))
+        title = fig.suptitle('')
+        # Scale bar on the first panel
+        ax[0].text(
+            0.1, -0.03, rf'{round(barl):1d} $\mu$as', c='k', ha='center',
+            va='top', transform=ax[0].transAxes
+        )
+        ax[0].hlines(
+            -0.02, 0, 0.2, transform=ax[0].transAxes, colors='k',
+            lw=3, clip_on=False
+        )
+        # Update images and labels to a given epoch
+        def update(e):
+            for c in range(self.nf):
+                ims[c].set_data(video[e, c] + offset)
+                stot[c].set_text(f'$S_{{tot}}$: {video[e, c].sum():.1f} Jy')
+            title.set_text(
+                self.dates[e] if self.dates is not None
+                else f'MJD {float(self.times[e]):.2f}'
+            )
+            return ims + stot + [title]
+        # Fill the labels before fixing the layout
+        update(0)
+        fig.tight_layout()
+        # Define writer
+        fps = 10
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=range(self.nt),
+            interval=1e3/fps
+        )
+        wri = animation.writers['ffmpeg'](fps=fps, bitrate=1e6)
+        # Save gif
+        ani.save(outpath, writer=wri, dpi=100)
+        plt.close(fig)
+
+    @staticmethod
+    def async_plot(q: Callable) -> None:
+        """Asynchronous plotting routine.
+
+        Plot results from CPU without stopping GPU computations.
+        It loads the network output on a separate thread.
+
+        Args:
+            q: Queue object where output is loaded.
+        """
+        def _async_plot_impl(
+                *,
+                video,
+                out,
+                **kwargs,
+        ):
+            video.from_video(out)
+            video.loss = kwargs.pop('loss', None)
+            video.plot(**kwargs)
+        # Unpack queue
+        while True:
+            try:
+                _async_plot_impl(**q.get())
+            except Exception:
+                # Report the error but keep the worker alive, so that
+                # q.join() in the main script does not hang
+                traceback.print_exc()
+            finally:
+                q.task_done()
+
+    def save_h5(self, outpath: str = './video.h5') -> None:
+        """Save the video as one HDF5 movie per frequency band.
+
+        Args:
+            outpath: Path and filename of output file.
+        """
+        video = np.asarray(self.grid_iarr())
+        base, ext = os.path.splitext(outpath)
+        proxy = eh.image.make_empty(self.npix, self.fov, self.ra, self.dec)
+        for c in range(self.nf):
+            frames = []
+            for e in range(self.nt):
+                frame = proxy.copy()
+                frame.rf = float(self.freqs[c])
+                frame.mjd = int(self.times[e])
+                frame.time = (float(self.times[e]) - frame.mjd) * 24
+                frame.imvec = video[e, c].ravel()
+                frames.append(frame)
+            tag = f'{float(self.freqs[c])/1e9:.0f}GHz'
+            with ut.no_print():
+                eh.movie.merge_im_list(frames).save_hdf5(
+                    f'{base}_{tag}{ext or ".h5"}'
+                )

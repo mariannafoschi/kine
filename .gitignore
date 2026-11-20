@@ -14,4 +14,4 @@ docs/build/
 troubleshooting.md
 
 # output folder
-output/*
+out/

@@ -15,8 +15,10 @@ utils
    :nosignatures:
 
    ~kine.utils.get_grid
+   ~kine.utils.get_lognu
    ~kine.utils.regrid_image
    ~kine.utils.get_times_multiepoch
+   ~kine.utils.group_multiepoch_multifreq
    ~kine.utils.get_static_flux
 
 **Array utilities**
@@ -47,9 +49,13 @@ utils
 
 .. autofunction:: kine.utils.get_grid
 
+.. autofunction:: kine.utils.get_lognu
+
 .. autofunction:: kine.utils.regrid_image
 
 .. autofunction:: kine.utils.get_times_multiepoch
+
+.. autofunction:: kine.utils.group_multiepoch_multifreq
 
 .. autofunction:: kine.utils.get_static_flux
 
